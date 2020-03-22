@@ -151,7 +151,7 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
         else:
             self.Y = self.opt['Y0'].astype(self.dtype, copy=True)
         self.Yprev = self.Y.copy()
-        self.Ys = sporco.linalg.ifftn(self.Y,axes=tuple(range(0,self.Ndim)))
+        self.Ys = self.ifft(self.Y)
 
         # Initialise working variable U
         if self.opt['U0'] is None:
@@ -179,13 +179,13 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
 
         dhypu = sporco.linalg.inner(np.conj(self.DR),(self.block_sep0(self.Y) + self.block_sep0(self.U)),self.Caxis)
         zpg = self.block_sep1(self.Y) + self.block_sep1(self.U)
-        # would be much clearer if I wrote method for this
-        self.matMul(dhypu + zpg)
+
+        X = self.matMul(self.Ainv,dhypu + zpg)
         #X = sporco.linalg.inner(self.Ainv,np.swapaxes((dhypu + zpg).reshape(dhypu.shape + (1,)), self.Maxis, self.Maxis + 1))
         #X = np.swapaxes(X,self.Maxis + 1,self.Maxis).reshape(self.S.shape[0:self.Ndim] + (1,) + (self.K,) + (self.M,))
 
         # need method for fft and ifft
-        self.X = sporco.linalg.fftn(self.W1*sporco.linalg.ifftn(X,axes=tuple(range(0,self.Ndim))),s=X.shape[0:self.Ndim],axes=tuple(range(0,self.Ndim)))
+        self.X = self.fft(self.W1*self.ifft(X))
         
 
 
@@ -194,7 +194,7 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
 
         """
         # need method for ifft
-        Dxmg = sporco.linalg.ifftn(-self.nDX - self.block_sep0(self.U),axes=tuple(range(0,self.Ndim)))
+        Dxmg = self.ifft(-self.nDX - self.block_sep0(self.U))
         self.Yprev = self.Y
         Y0S = np.logical_not(self.W)*Dxmg + self.W*(1/(1 + self.rho)*self.S + self.rho*Dxmg)
         #temp = -self.nX
@@ -202,10 +202,9 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
         #temp = tuple(range(0,self.Ndim))
         #temp = self.lmbda*self.R/self.rho
         #temp = sporco.linalg.rifftn(-self.nX - self.block_sep1(self.U),axes=tuple(range(0,self.Ndim)))
-        Y1S = sporco.prox.prox_l1(sporco.linalg.ifftn(-self.nX - self.block_sep1(self.U),axes=tuple(range(0,self.Ndim))),self.lmbda*self.R/self.rho)
+        Y1S = sporco.prox.prox_l1(self.ifft(-self.nX - self.block_sep1(self.U)), self.lmbda*self.R/self.rho)
         self.Ys = self.block_cat(Y0S,Y1S)
-        # need method for fft
-        self.Y = sporco.linalg.fftn(self.Ys,s=self.S.shape[0:self.Ndim],axes=tuple(range(0,self.Ndim)))
+        self.Y = self.fft(self.Ys)
 
 
 
@@ -441,7 +440,7 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
     def reconstruct(self):
         DX = sporco.linalg.inner(self.DR,self.X,self.Maxis)
         # need ifft mehod
-        return sporco.linalg.ifftn(X,axes=tuple(range(0,self.Ndim)))
+        return self.ifft(X)
 
 
 
@@ -558,6 +557,12 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
 
     def matMul(self,A,x):
         temp = sporco.linalg.inner(A,np.swapaxes(x.reshape(x.shape + (1,)), -1, -2),-1)
-        return temp.reshape(x.shape[0:-1] + A.shape[-2])
+        return temp.reshape(x.shape[0:-1] + (A.shape[-2],))
+
+    def fft(self,x):
+        return sporco.linalg.fftn(x,self.Nx[0:self.Ndim],tuple(range(0,self.Ndim)))
+
+    def ifft(self,xf):
+        return sporco.linalg.ifftn(xf,self.Nx[0:self.Ndim],tuple(range(0,self.Ndim)))
         
 
