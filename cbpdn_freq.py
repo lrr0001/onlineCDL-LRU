@@ -496,10 +496,10 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
 
             # Y update
             print('Lagrangian y-terms before update')
-            print(np.linalg.norm(self.W*(self.S -self.block_sep0(self.Ys)))**2/2 + self.rho*np.linalg.norm(self.block_sep0(self.Y) + self.nDX + self.block_sep0(self.U))**2/2)
+            print(np.linalg.norm(self.W*(self.S -self.block_sep0(self.Ys)))**2/2 + self.rho*np.linalg.norm(self.ifft(self.block_sep0(self.Y) + self.nDX + self.block_sep0(self.U)))**2/2)
             self.ystep()
             print('Langrangian y-terms after update')
-            print(np.linalg.norm(self.W*(self.S -self.block_sep0(self.Ys)))**2/2 + self.rho*np.linalg.norm(self.block_sep0(self.Y) + self.nDX + self.block_sep0(self.U))**2/2)
+            print(np.linalg.norm(self.W*(self.S -self.block_sep0(self.Ys)))**2/2 + self.rho*np.linalg.norm(self.ifft(self.block_sep0(self.Y) + self.nDX + self.block_sep0(self.U)))**2/2)
             # U update
             self.ustep()
 
