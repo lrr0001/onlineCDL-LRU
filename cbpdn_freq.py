@@ -220,10 +220,6 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
             self.nDX = self.nDXnr
             self.nX = -self.X
         else:
-            # Avoid calling cnst_c() more than once in case it is expensive
-            # (e.g. due to allocation of a large block of memory)
-            #if not hasattr(self, '_cnst_c'):
-            #    self._cnst_c = self.cnst_c()
             # Compute relaxed version of AX
             alpha = self.rlx
             self.nDX = alpha*self.nDXnr - (1 - alpha)*(self.block_sep0(self.Y))
