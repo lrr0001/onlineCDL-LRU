@@ -193,15 +193,10 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
         r"""Minimise Augmented Lagrangian with respect to :math:`\mathbf{y}`.
 
         """
-        # need method for ifft
-        Dxmg = self.ifft(-self.nDX - self.block_sep0(self.U))
+
+        Dxmg = self.ifft(self.nDX - self.block_sep0(self.U))
         self.Yprev = self.Y
         Y0S = np.logical_not(self.W)*Dxmg + self.W*(1/(1 + self.rho)*self.S + self.rho*Dxmg)
-        #temp = -self.nX
-        #temp = -self.nX - self.block_sep1(self.U)
-        #temp = tuple(range(0,self.Ndim))
-        #temp = self.lmbda*self.R/self.rho
-        #temp = sporco.linalg.rifftn(-self.nX - self.block_sep1(self.U),axes=tuple(range(0,self.Ndim)))
         Y1S = sporco.prox.prox_l1(self.ifft(-self.nX - self.block_sep1(self.U)), self.lmbda*self.R/self.rho)
         self.Ys = self.block_cat(Y0S,Y1S)
         self.Y = self.fft(self.Ys)
