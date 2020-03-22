@@ -181,10 +181,7 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
         zpg = self.block_sep1(self.Y) + self.block_sep1(self.U)
 
         X = self.matMul(self.Ainv,dhypu + zpg)
-        #X = sporco.linalg.inner(self.Ainv,np.swapaxes((dhypu + zpg).reshape(dhypu.shape + (1,)), self.Maxis, self.Maxis + 1))
-        #X = np.swapaxes(X,self.Maxis + 1,self.Maxis).reshape(self.S.shape[0:self.Ndim] + (1,) + (self.K,) + (self.M,))
 
-        # need method for fft and ifft
         self.X = self.fft(self.W1*self.ifft(X))
         
 
