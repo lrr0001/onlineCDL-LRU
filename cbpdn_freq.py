@@ -161,6 +161,11 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
 
         self.itstat = []
         self.k = 0
+        print(self.data_fid_term())
+
+    def yinit(self,yshape):
+        Y = np.zeros(yshape,dtype=self.dtype)
+        return self.block_cat(self.fft(self.S),self.block_sep1(Y)) 
 
 
     def getmin(self):
@@ -177,13 +182,10 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
         r"""Minimise Augmented Lagrangian with respect to :math:`\mathbf{x}`.
         """
 
-        dhypu = sporco.linalg.inner(np.conj(self.DR),(self.block_sep0(self.Y) + self.block_sep0(self.U)),self.Caxis)
-        zpg = self.block_sep1(self.Y) + self.block_sep1(self.U)
+        dhypu = sporco.linalg.inner(np.conj(self.DR),(self.block_sep0(self.Y) + self.block_sep0(self.U)/self.rho),self.Caxis)
+        zpg = self.block_sep1(self.Y) + self.block_sep1(self.U)/self.rho
 
-        X = self.matMul(self.Ainv,dhypu + zpg)
-
-        self.X = self.fft(self.W1*self.ifft(X))
-        
+        self.X = self.matMul(self.Ainv,dhypu + zpg)
 
 
     def ystep(self):
@@ -191,10 +193,10 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
 
         """
 
-        Dxmg = self.ifft(-self.nDX - self.block_sep0(self.U))
+        Dxmg = self.ifft(-self.nDX - self.block_sep0(self.U)/self.rho)
         self.Yprev = self.Y
         Y0S = np.logical_not(self.W)*Dxmg + self.W*(1/(1 + self.rho)*self.S + self.rho*Dxmg)
-        Y1S = sporco.prox.prox_l1(self.ifft(-self.nX - self.block_sep1(self.U)), self.lmbda*self.R/self.rho)
+        Y1S = self.W1*sporco.prox.prox_l1(self.ifft(-self.nX - self.block_sep1(self.U)/self.rho), self.lmbda*self.R/self.rho)
         self.Ys = self.block_cat(Y0S,Y1S)
         self.Y = self.fft(self.Ys)
 
@@ -302,7 +304,7 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
 #
 #        return 0
     def obfn_dfd(self):
-        return (1/(2*self.normCorrection**2))*np.linalg.norm(self.block_sep0(self.Y)[:] - self.S)**2
+        return (1/(2*self.normCorrection**2))*np.linalg.norm(self.block_sep0(self.Y)[:] - self.W*self.S)**2
 
     def obfn_reg(self):
         return (self.lmbda*np.linalg.norm(x=sporco.linalg.ifftn(self.block_sep1(self.Y)).reshape((-1,1)),ord=1),)
@@ -475,10 +477,10 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
 
             # Update record of Y from previous iteration
             self.Yprev = self.Y.copy()
-            print('Lagrangian x-terms before update')
-            if temp==1:
-                print(np.linalg.norm(self.rsdl_r(self.nDX, self.nX, self.Y) + self.U)) # added + U
-            temp=1
+            #print('Lagrangian x-terms before update')
+            #if temp==1:
+            #    print(self.zx_constraint() + self.ydx_constraint())
+            #temp=1
 
             # X update
             self.xstep()
@@ -488,15 +490,29 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
             # Implement relaxation if RelaxParam != 1.0
             self.relax_AX()
             # all these residuals should be in methods.
-            print('Lagrangian x-terms after update.')
-            print(np.linalg.norm(self.rsdl_r(self.nDX, self.nX, self.Y) + self.U)) # added + U
+            #print('Lagrangian x-terms after update.')
+            #print(self.zx_constraint() + self.ydx_constraint())
 
             # Y update
             print('Lagrangian y-terms before update')
-            print(np.linalg.norm(self.W*(self.S -self.block_sep0(self.Ys)))**2/2 + self.rho*np.linalg.norm(self.ifft(self.block_sep0(self.Y) + self.nDX + self.block_sep0(self.U)))**2/2)
+            print(self.data_fid_term() + self.ydx_constraint())
+            print('fidelity')
+            print(self.data_fid_term())
+            print('constraint')
+            print(self.ydx_constraint())
+            #zbefore = self.sparsity_term()# + self.zx_constraint()
             self.ystep()
             print('Langrangian y-terms after update')
-            print(np.linalg.norm(self.W*(self.S -self.block_sep0(self.Ys)))**2/2 + self.rho*np.linalg.norm(self.ifft(self.block_sep0(self.Y) + self.nDX + self.block_sep0(self.U)))**2/2)
+            print(self.data_fid_term() + self.ydx_constraint())
+            print('fidelity')
+            print(self.data_fid_term())
+            print('constraint')
+            print(self.ydx_constraint())
+            #print('Lagrangian z-terms before update')
+            #print(zbefore)
+            #print('Lagrangian z-terms after update')
+            #print(self.sparsity_term())# + self.zx_constraint())
+             
             # U update
             self.ustep()
 
@@ -552,5 +568,17 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
 
     def ifft(self,xf):
         return sporco.linalg.ifftn(xf,self.Nx[0:self.Ndim],tuple(range(0,self.Ndim)))
+
+    def data_fid_term(self):
+        return 1/2*np.linalg.norm(self.W*self.S - self.W*self.ifft(self.block_sep0(self.Y)))**2
+
+    def sparsity_term(self):
+        return self.lmbda*sporco.prox.norm_l1(x=self.ifft(self.R*self.block_sep1(self.Y)))
+
+    def zx_constraint(self):
+        return self.rho/2*(np.linalg.norm(self.block_sep1(self.Y) + self.nX + self.block_sep1(self.U)/self.rho)/self.normCorrection)**2
+
+    def ydx_constraint(self):
+        return self.rho/2*(np.linalg.norm(self.block_sep0(self.Y) + self.nDX + self.block_sep0(self.U)/self.rho)/self.normCorrection)**2
         
 
