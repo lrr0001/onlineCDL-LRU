@@ -99,11 +99,11 @@ for ii in [0,1]:
 Set regularization parameter and options for dictionary learning solver.
 """
 
-lmbda = 0.2
+lmbda = 0.002
 opt = onlinecdl.OnlineConvBPDNDictLearn.Options({
                 'Verbose': False, 'ZeroMean': False, 'eta_a': 10.0,
                 'eta_b': 20.0, 'DataType': np.float32,
-                'CBPDN': {'rho': 0.5, 'AutoRho': {'Enabled': True},
+                'CBPDN': {'rho': 0.005, 'AutoRho': {'Enabled': True},
                     'RelaxParam': 1.0, 'RelStopTol': 1e-7, 'MaxMainIter': 50,
                     'FastSolve': False, 'DataType': np.complex128}})
 

@@ -87,7 +87,10 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
         if not isinstance(opt, CBPDN_ScaledDict.Options):
             raise TypeError('Parameter opt must be an instance of '
                             'CBPDN_ScaledDict.Options')
-
+        self.normCorrection = np.sqrt(np.prod(S.shape[0:Ndim]))
+        print(R/np.sqrt(np.sum(a = np.conj(DR)*DR,axis=tuple([0,1,2,3])))*self.normCorrection)
+        DR = DR/R*45.033321
+        R = R/R
         self.opt = opt
         self.lmbda = lmbda
         self.M = Ainv.shape[-1]
@@ -477,10 +480,10 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
 
             # Update record of Y from previous iteration
             self.Yprev = self.Y.copy()
-            #print('Lagrangian x-terms before update')
-            #if temp==1:
-            #    print(self.zx_constraint() + self.ydx_constraint())
-            #temp=1
+            print('Lagrangian x-terms before update')
+            if temp==1:
+                print(self.zx_constraint() + self.ydx_constraint())
+            temp=1
 
             # X update
             self.xstep()
@@ -490,28 +493,28 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
             # Implement relaxation if RelaxParam != 1.0
             self.relax_AX()
             # all these residuals should be in methods.
-            #print('Lagrangian x-terms after update.')
-            #print(self.zx_constraint() + self.ydx_constraint())
+            print('Lagrangian x-terms after update.')
+            print(self.zx_constraint() + self.ydx_constraint())
 
             # Y update
             print('Lagrangian y-terms before update')
             print(self.data_fid_term() + self.ydx_constraint())
-            print('fidelity')
-            print(self.data_fid_term())
-            print('constraint')
-            print(self.ydx_constraint())
-            #zbefore = self.sparsity_term()# + self.zx_constraint()
+            #print('fidelity')
+            #print(self.data_fid_term())
+            #print('constraint')
+            #print(self.ydx_constraint())
+            zbefore = self.sparsity_term() + self.zx_constraint()
             self.ystep()
             print('Langrangian y-terms after update')
             print(self.data_fid_term() + self.ydx_constraint())
-            print('fidelity')
-            print(self.data_fid_term())
-            print('constraint')
-            print(self.ydx_constraint())
-            #print('Lagrangian z-terms before update')
-            #print(zbefore)
-            #print('Lagrangian z-terms after update')
-            #print(self.sparsity_term())# + self.zx_constraint())
+            #print('fidelity')
+            #print(self.data_fid_term())
+            #print('constraint')
+            #print(self.ydx_constraint())
+            print('Lagrangian z-terms before update')
+            print(zbefore)
+            print('Lagrangian z-terms after update')
+            print(self.sparsity_term() + self.zx_constraint())
              
             # U update
             self.ustep()
