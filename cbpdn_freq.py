@@ -88,9 +88,6 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
             raise TypeError('Parameter opt must be an instance of '
                             'CBPDN_ScaledDict.Options')
         self.normCorrection = np.sqrt(np.prod(S.shape[0:Ndim]))
-        print(R/np.sqrt(np.sum(a = np.conj(DR)*DR,axis=tuple([0,1,2,3])))*self.normCorrection)
-        DR = DR/R*45.033321
-        R = R/R
         self.opt = opt
         self.lmbda = lmbda
         self.M = Ainv.shape[-1]
@@ -165,6 +162,11 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
         self.itstat = []
         self.k = 0
         print(self.data_fid_term())
+        #print(self.X.shape)
+        print(self.Y.shape)
+        print(self.U.shape)
+        print(self.DR.shape)
+        print(self.S.shape)
 
     def yinit(self,yshape):
         Y = np.zeros(yshape,dtype=self.dtype)
@@ -198,8 +200,9 @@ class CBPDN_ScaledDict(sporco.admm.cbpdn.GenericConvBPDN):
 
         Dxmg = self.ifft(-self.nDX - self.block_sep0(self.U)/self.rho)
         self.Yprev = self.Y
-        Y0S = np.logical_not(self.W)*Dxmg + self.W*(1/(1 + self.rho)*self.S + self.rho*Dxmg)
+        Y0S = np.logical_not(self.W)*Dxmg + self.W*(1/(1 + self.rho)*(self.S + self.rho*Dxmg))
         Y1S = self.W1*sporco.prox.prox_l1(self.ifft(-self.nX - self.block_sep1(self.U)/self.rho), self.lmbda*self.R/self.rho)
+
         self.Ys = self.block_cat(Y0S,Y1S)
         self.Y = self.fft(self.Ys)
 

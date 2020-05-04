@@ -4,6 +4,123 @@ import sporco.admm.cbpdn
 import sporco.cnvrep
 import sporco.prox
 import numpy
+import scipy.linalg
+
+class factoredMatrix:
+    def update(self,x):
+        raise NotImplementedError
+    def inv(self,b,D=None):
+        raise NotImplementedError
+
+class factoredMatrix_qr(factoredMatrix):
+    def __init__(self,D=None,dtype=None):
+        if D is None:
+            pass
+        else:
+            m = D.shape[-2]
+            n = D.shape[-1]
+            if dtype is None:
+                dtype= D.dtype
+            self.dtype=dtype
+            if m <= n:
+                idMat = numpy.identity(m,dtype=self.dtype)
+                self.Q = numpy.zeros(D.shape[0:-2] + (m,m),dtype=self.dtype)
+                self.R = numpy.zeros(D.shape[0:-2] + (m,m),dtype=self.dtype)
+                for inds in loop_magic(D.shape[0:-2]):
+                    self.Q[inds],self.R[inds] = scipy.linalg.qr(idMat + numpy.matmul(D[inds],conj_tp(D)[inds]))
+                self.flipped=True
+            else:
+                idMat = numpy.identity(n,dtype= self.dtype)
+                self.Q = numpy.zeros(D.shape[0:-2] + (n,n),dtype=self.dtype)
+                self.R = numpy.zeros(D.shape[0:-2] + (n,n),dtype=self.dtype)
+                for inds in loop_magic(self.Q.shape[0:-2]):
+                    self.Q[inds],self.R[inds] = scipy.linalg.qr(idMat + numpy.matmul(conj_tp(D)[inds],D[inds]))
+                self.flipped=False
+
+    def update(self,x):
+        for inds in loop_magic(self.Q.shape[0:-2]):
+            self.Q[inds],self.R[inds] = scipy.linalg.qr_update(self.Q[inds],self.R[inds],x[inds],conj_tp(x[inds]))
+
+
+    def inv_vec(self,b,D=None):
+        if self.flipped:
+            assert D is not None
+            y = numpy.matmul(conj_tp(self.Q),numpy.matmul(D,b.reshape(b.shape + (1,))))
+            y = y.reshape(y.shape[0:-1])
+            z = numpy.zeros(y.shape,dtype=self.dtype)
+            for inds in loop_magic(self.Q.shape[0:-2]):
+                z[inds] = scipy.linalg.solve_triangular(self.R[inds],y[inds])
+            return b - (numpy.matmul(conj_tp(D),z.reshape(z.shape + (1,)))).reshape(b.shape)
+        else:
+            y = numpy.matmul(conj_tp(self.Q),b.reshape(b.shape + (1,)))
+            y = y.reshape(y.shape[0:-1])
+            z = numpy.zeros(y.shape,dtype=self.dtype)
+            for inds in loop_magic(self.Q.shape[0:-2]):
+                z[inds] = scipy.linalg.solve_triangular(self.R[inds],y[inds])
+            return z
+    def inv_mat(self,b,D=None):
+        if self.flipped:
+            assert D is not None
+            y = numpy.matmul(conj_tp(self.Q),numpy.matmul(D,b))
+            z = numpy.zeros(y.shape,dtype=self.dtype)
+            for inds in loop_magic(self.Q.shape[0:-2]):
+                z[inds] = scipy.linalg.solve_triangular(self.R[inds],y[inds])
+            return b - numpy.matmul(conj_tp(D),z)
+        else:
+            y = numpy.matmul(conj_tp(self.Q),b)
+            z = numpy.zeros(y.shape,dtype=self.dtype)
+            for inds in loop_magic(self.Q.shape[0:-2]):
+                z[inds] =scipy.linalg.solve_triangular(self.R[inds],y[inds])
+            return z
+
+def conj_tp(x):
+    return numpy.conj(numpy.swapaxes(x,-2,-1)) 
+
+def woodburyIpUV(df,r,c,noc,nof):
+    '" Computes the inverse of I + df^Hdf using the Woodbury inversion lemma "'
+
+    # need identity matrix for small dimensions (r x c x C x C)
+    idmat = numpy.zeros((r,c,noc,noc))
+    for mm in range(noc):
+        idmat[:,:,slice(mm,mm+1),slice(mm,mm+1)] = 1
+
+    # need identity matrix for large dimensions (r x c x 1 x 1 x M x M)
+    idmat2 = numpy.zeros((r,c,1,1,nof,nof))
+    for mm in range(nof):
+        idmat2[:,:,:,:,slice(mm,mm+1),slice(mm,mm+1)] = 1
+
+    # compute (I + dfdf^H)^{-1}
+    dt = numpy.conj(df.reshape((r,c,1,noc,nof)))
+    d = df.reshape((r,c,noc,1,nof))
+    ddt = sporco.linalg.inner(d,dt,axis=4)
+    b = idmat + ddt.reshape((r,c,noc,noc))
+    binv = numpy.linalg.inv(b)
+
+    # expand for computation of a inverse
+    binv = binv.reshape((r,c,noc,noc,1,1))
+
+   # ainv = I - df^H binv df
+    dt = dt.reshape((r,c,noc,1,nof,1))
+    d = d.reshape((r,c,1,noc,1,nof))
+    ainv = idmat2 - sporco.linalg.inner(dt,sporco.linalg.inner(binv,d,axis=3),axis=2)
+    return ainv
+
+def woodburyIpUV2(df,r,c,noc,nof):
+    idmat = numpy.zeros((r,c,noc,noc))
+    for mm in range(noc):
+        idmat[:,:,slice(mm,mm+1),slice(mm,mm+1)] = 1
+    idmat2 = numpy.zeros((r,c,nof,nof))
+    for mm in range(nof):
+        idmat2[:,:,slice(mm,mm+1),slice(mm,mm+1)] = 1
+    dt = numpy.conj(numpy.swapaxes(df,2,3))
+    b = idmat + numpy.matmul(df,dt)
+    binv = numpy.linalg.inv(b)
+
+    ainv = idmat2 - numpy.matmul(dt,numpy.matmul(binv,df))
+    ainv = 1/2*(ainv + numpy.conj(numpy.swapaxes(ainv,2,3)))
+    #return ainv.reshape((r,c,1,1,nof,nof))
+    return(ainv)
+    
 
 def lowRankApprox(a, projIter=2,axisu=2,axisv=3,dimN=2):
     r""" This code constructs an approximation of a using a sum of a pair of low-rank terms. (Notably, their sum is not low-rank.)
@@ -164,4 +281,25 @@ def computeNorms(v,dimN=2):
     C = v.shape[dimN]
     vn2 = numpy.sum(numpy.conj(v) * v,axisN,keepdims=True)/C
     return numpy.sqrt(vn2)
+
+
+class loop_magic: # missing zero
+    def __init__(self,b):
+        self.b = b
+        self.L = len(b)
+        self.ind = [0]*self.L
+    def __iter__(self):
+        return self
+    def __next__(self):
+        overflow = True
+        for ii in range(self.L):
+            self.ind[ii] += 1
+            if self.ind[ii] == self.b[ii]:
+                self.ind[ii] = 0
+            else:
+                overflow = False
+                break
+        if overflow:
+            raise StopIteration
+        return tuple(self.ind)
 
