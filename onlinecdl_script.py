@@ -77,33 +77,46 @@ Construct initial dictionary.
 """
 
 np.random.seed(12345)
-D0 = np.random.randn(8, 8, noc, 1, nof)
-Df0 = sporco.linalg.fftn(D0,s=[78,78],axes=(0,1))
-u,vh,Df = sherman_morrison_python_functions.lowRankApprox(a = Df0, projIter=5,axisu = dimN,axisv=dimN + 2,dimN=dimN)
+#D0 = np.random.randn(8, 8, noc, 1, nof)
+#Df0 = sporco.linalg.fftn(D0,s=[78,78],axes=(0,1))
+#u,vh,Df = sherman_morrison_python_functions.lowRankApprox(a = Df0, projIter=5,axisu = dimN,axisv=dimN + 2,dimN=dimN)
 
-R = sherman_morrison_python_functions.computeNorms(Df,dimN=2)
-idmat = np.zeros((78,78,1,1,nof,nof))
-for mm in range(nof):
-    idmat[:,:,:,:,slice(mm,mm+1),slice(mm,mm+1)] = 1
-ainv = np.copy(idmat)
+#Q = sherman_morrison_python_functions.factoredMatrix_chol(Df)
 
-for ii in [0,1]:
-    for jj in [0,1]:
-        uhu = sporco.linalg.inner(np.conj(u[ii]),u[jj],dimN)
-        uhu = uhu.reshape(uhu.shape + (1,))
-        vH = np.reshape(vh[jj],vh[jj].shape + (1,))
-        v = np.reshape(np.conj(vh[ii]),vh[ii].shape[0:-1] + (1,) + (vh[ii].shape[-1],))
-        ainv = sherman_morrison_python_functions.mdbi_sm_r1update(ainv,u=v, vt=uhu*vH, dimN=dimN)
+#R = sherman_morrison_python_functions.computeNorms(Df,dimN=2)
+D = util.convdicts()['RGB:8x8x3x64']
+R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
+rho = 0.5
+
+Df = np.empty((increment[0] + 2*(filterSz[0] - 1),increment[1] + 2*(filterSz[1] - 1)) + D.shape[2:],dtype=np.complex128)
+
+Df = sporco.linalg.fftn(D,(increment[0] + 2*(filterSz[0] - 1),increment[1] + 2*(filterSz[1] - 1)),(0,1))
+Df = (Df + sherman_morrison_python_functions.conj_sym_proj(Df,range(2)))/2
+[a,b,noc,nof]= Df.shape
+Q = sherman_morrison_python_functions.factoredMatrix_chol(Df.reshape((a,b,1,1,noc,nof)),rho=rho)
+
+#idmat = np.zeros((78,78,1,1,nof,nof))
+#for mm in range(nof):
+#    idmat[:,:,:,:,slice(mm,mm+1),slice(mm,mm+1)] = 1
+#ainv = np.copy(idmat)
+
+#for ii in [0,1]:
+#    for jj in [0,1]:
+#        uhu = sporco.linalg.inner(np.conj(u[ii]),u[jj],dimN)
+#        uhu = uhu.reshape(uhu.shape + (1,))
+#        vH = np.reshape(vh[jj],vh[jj].shape + (1,))
+#        v = np.reshape(np.conj(vh[ii]),vh[ii].shape[0:-1] + (1,) + (vh[ii].shape[-1],))
+#        ainv = sherman_morrison_python_functions.mdbi_sm_r1update(ainv,u=v, vt=uhu*vH, dimN=dimN)
 
 """
 Set regularization parameter and options for dictionary learning solver.
 """
 
-lmbda = 0.002
+lmbda = 1e-1
 opt = onlinecdl.OnlineConvBPDNDictLearn.Options({
                 'Verbose': False, 'ZeroMean': False, 'eta_a': 10.0,
-                'eta_b': 20.0, 'DataType': np.float32,
-                'CBPDN': {'rho': 0.005, 'AutoRho': {'Enabled': True},
+                'eta_b': 20.0, 'DataType': np.complex128,
+                'CBPDN': {'rho': rho, 'AutoRho': {'Enabled': False},
                     'RelaxParam': 1.0, 'RelStopTol': 1e-7, 'MaxMainIter': 50,
                     'FastSolve': False, 'DataType': np.complex128}})
 
@@ -119,7 +132,10 @@ W1 = W1.reshape(W1.shape + 3*(1,))
 """
 Create solver object and solve.
 """
-d = onlineCDL_lowrankupdates.OnlineConvBPDNDictLearnLRU(Ainv=ainv, Df0=Df,W=W,W1=W1,dsz=filterSz + (noc,),lmbda=lmbda,projIter=5, opt=opt)
+d = onlineCDL_lowrankupdates.OnlineConvBPDNDictLearnLRU(Q=Q, Df0=Df,W=W,W1=W1,dsz=filterSz + (noc,) + (nof,),lmbda=lmbda,projIter=5, opt=opt)
+
+print('Is D real?')
+print(np.amax(np.abs(Df - (Df + sherman_morrison_python_functions.conj_sym_proj(Df,range(2)))/2)))
 
 iter = 50
 d.display_start()
@@ -154,7 +170,7 @@ print("OnlineConvBPDNDictLearn solve time: %.2fs" % d.timer.elapsed('solve'))
 """
 Display initial and final dictionaries.
 """
-D0 = D0.squeeze()
+D0 = D.squeeze()
 D1 = D1.squeeze()
 fig = plot.figure(figsize=(14, 7))
 plot.subplot(1, 2, 1)

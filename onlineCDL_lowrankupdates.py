@@ -1,6 +1,6 @@
 import sporco
 import sporco.dictlrn.onlinecdl
-import cbpdn_freq
+import cbpdn_fixed_rho
 from sporco import util
 from sporco import common
 from sporco.util import u
@@ -9,7 +9,7 @@ import sporco.cnvrep as cr
 from sporco.admm import cbpdn
 from sporco import cuda
 from sporco.dictlrn import dictlrn
-import sherman_morrison_python_functions
+import sherman_morrison_python_functions as sm
 import numpy
 
 
@@ -38,7 +38,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
 
 
-    def __init__(self, Ainv, Df0, W, W1, dsz=None, lmbda=None, projIter=5, opt=None, dimK=None, dimN=2):
+    def __init__(self, Q, Df0, W, W1, dsz=None, lmbda=None, projIter=5, opt=None, dimK=None, dimN=2):
         """
         Parameters
         ----------
@@ -70,7 +70,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         if opt['CUDA_CBPDN'] and cuda.device_count() == 0:
             raise ValueError('SPORCO-CUDA not installed or no GPU available')
 
-        self.Ainv = Ainv
+        self.Q = Q
         self.W = W
         self.W1 = W1
         self.projIter = projIter
@@ -104,11 +104,18 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         #self.D = cr.Pcn(D0, self.dsz, (), dimN, dimCd, crp=True,
                         #zm=opt['ZeroMean'])
         #self.Dprv = self.D.copy()
-        self.Gf = Df0
-        self.Gprv = sporco.linalg.ifftn(Df0,self.dsz[0:-1],tuple(range(0,dimN)))
+
+        # Need to decide whether the expected input dictionary shape.
+        self.Dfshape = Df0.shape
+        cri = cr.CSC_ConvRepIndexing(Df0,Df0[0:dimN + 1])
+        self.Df = Df0.reshape(cri.shpD)
+        self.Gf = self.Df
+        self.Gprv = sporco.linalg.ifftn(self.Df,self.dsz[0:-2],tuple(range(0,dimN)))
         self.G = self.Gprv
-        self.Df = Df0
-        self.R = sherman_morrison_python_functions.computeNorms(self.Df)
+        self.R = sm.computeNorms(Df0)/numpy.prod(self.Df.shape[0:dimN])
+        print('Is D0 real?')
+        complexGf = self.Gf - sm.conj_sym_proj(self.Gf,range(self.dimN))
+        print(numpy.amax(numpy.abs(complexGf)))
 
         # Create constraint set projection function
         self.Pcn = sporco.cnvrep.getPcn(self.dsz, (), dimN, dimCd, crp=True,
@@ -132,40 +139,6 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         instance.timer.start('init')
         return instance
 
-
-    def solve(self, S, dimK=None):
-        """Compute sparse coding and dictionary update for training
-        data `S`."""
-
-        # Use dimK specified in __init__ as default
-        if dimK is None and self.dimK is not None:
-            dimK = self.dimK
-
-        # Start solve timer
-        self.timer.start(['solve', 'solve_wo_eval'])
-
-        # Solve CSC problem on S and do dictionary step
-        self.init_vars(S, dimK)
-        self.xstep(S, self.lmbda, dimK)
-        self.dstep()
-
-        # Stop solve timer
-        self.timer.stop('solve_wo_eval')
-
-        # Extract and record iteration stats
-        self.manage_itstat()
-
-        # Increment iteration count
-        self.j += 1
-
-        # Stop solve timer
-        self.timer.stop('solve')
-
-        # Return current dictionary
-        return self.getdict()
-
-
-
     def init_vars(self, S, dimK):
         """Initalise variables required for sparse coding and dictionary
         update for training data `S`."""
@@ -184,7 +157,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
                     raise NotImplementedError()
             #self.Df = sl.pyfftw_byte_aligned(sl.fftn(self.D, self.cri.Nv,
                                                       #self.cri.axisN))
-            self.Gf = sl.pyfftw_empty_aligned(self.Df.shape, self.Df.dtype)
+            #self.Gf = sl.pyfftw_empty_aligned(self.Df.shape, self.Df.dtype)
             #self.Z = sl.pyfftw_empty_aligned(self.cri.shpX, self.dtype)
         #else:
         #    self.Df[:] = sl.fftn(self.D, self.cri.Nv, self.cri.axisN)
@@ -197,20 +170,46 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         if self.opt['CUDA_CBPDN']:
             raise NotImplementedError()
         else:
-            # Create X update object (external representation is expected!)
             Sf = sporco.linalg.fftn(S,s=self.cri.Nv,axes=self.cri.axisN).reshape(S.shape[0:self.dimN + 1]  + 2*(1,))
             if S.ndim == self.dimN + 1:
                 self.Sf = Sf.reshape(S.shape[0:self.dimN + 1] + 2*(1,))
-                S = S.reshape(S.shape[0:self.dimN + 1] + 2*(1,))
+                #S = S.reshape(S.shape[0:self.dimN + 1] + 2*(1,))
             elif S.ndim == self.dimN + 2:
                 self.Sf = Sf.reshape(S.shape[0:self.dimN + 2] + (1,))
-                S = S.reshape(S.shape[0:self.dimN + 2] + (1,))
+                #S = S.reshape(S.shape[0:self.dimN + 2] + (1,))
             else:
                 raise TypeError('Signal array must have Ndim + 1 or Ndim + 2 dimensions.')
-            xstep = cbpdn_freq.CBPDN_ScaledDict(Ainv=self.Ainv, DR=self.Df, R=self.R, S=S, W=self.W, W1=self.W1, lmbda=lmbda, Ndim=self.dimN, opt=self.opt['CBPDN'])
+            #print('Is the signal real?')
+            #complexSf = self.Sf - sm.conj_sym_proj(self.Sf,self.cri.axisN)
+            #print(numpy.amax(numpy.abs(complexSf)))
+
+            #print('What if we realize the signal, haha?')
+            #self.Sf = sm.conj_sym_proj(self.Sf,self.cri.axisN)
+            #complexSf = self.Sf - sm.conj_sym_proj(self.Sf,self.cri.axisN)
+            #print(numpy.amax(numpy.abs(complexSf)))
+
+            #print('Hold on, just a sanity check here... Does our conjegate symmetric projection actually work?')
+            #S2 = sporco.linalg.ifftn(self.Sf,s=self.cri.Nv,axes=self.cri.axisN)
+            #print(numpy.amax(numpy.abs(S - numpy.squeeze(S2))))
+
+            # apparently, W isn't supposed to be boolean.
+            xstep = cbpdn_fixed_rho.CBPDN_FactoredFixedRho(Q=self.Q, DR=self.Df.reshape(self.Dfshape),S=S, R=self.R, W=self.W, W1=self.W1, lmbda=lmbda, dimN=self.dimN, opt=self.opt['CBPDN'])
             xstep.solve()
+            #import pdb; pdb.set_trace()
             self.Zf = xstep.getcoef()
+            self.Zf = self.Zf.reshape(self.cri.shpX)
+            #complexZf = self.Zf - sm.conj_sym_proj(self.Zf,range(self.dimN))
+            #print('Are the coefficients real?')
+            #print(numpy.amax(numpy.abs(complexZf)))
+
+            #print('How large are these coeficients?')
+            #print('frequency:')
+            #print(numpy.amax(numpy.abs(self.Zf)))
+            #print('spatial:')
+            #print(numpy.amax(numpy.abs(sporco.linalg.ifftn(self.Zf,self.cri.Nv, self.cri.axisN))))
+
             self.xstep_itstat = xstep.itstat[-1] if xstep.itstat else None
+            print('xstep complete.')
 
 
 
@@ -237,8 +236,16 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
         # Compute X D - S
         Ryf = sl.inner(self.Zf, self.Gf, axis=self.cri.axisM) - self.Sf
+        #print('Is Ry real?')
+        #complexRyf = Ryf - sm.conj_sym_proj(Ryf,range(self.dimN))
+        #print(numpy.amax(numpy.abs(complexRyf)))
+
+
         # Compute gradient
         gradf = sl.inner(numpy.conj(self.Zf), Ryf, axis=self.cri.axisK)
+        #print('Is grad real?')
+        #complexgrad = gradf - sm.conj_sym_proj(gradf,range(self.dimN))
+        #print(numpy.amax(numpy.abs(complexgrad)))
 
         # If multiple channel signal, single channel dictionary
         #if self.cri.C > 1 and self.cri.Cd == 1:
@@ -247,27 +254,41 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         # Update gradient step
         self.eta = self.eta_a / (self.j + self.eta_b)
         
-        gradfr = sl.ifftn(gradf, self.cri.dsz[0:-1], self.cri.axisN)
+        gradfr = sl.ifftn(gradf, self.cri.dsz[0:-2], self.cri.axisN)
 
         self.Gprv = self.G
 
         self.G = self.Pcn(self.G - self.eta*gradfr)
+       
+
+
         self.Gf = sl.fftn(self.G, self.cri.Nv,self.cri.axisN)
-        (u,vH,dupdate) = sherman_morrison_python_functions.lowRankApprox(a=self.Gf -self.Df,projIter=self.projIter,axisu=self.cri.axisC,axisv=self.cri.axisM,dimN=self.dimN)
+        #print('Is G real?')
+        #complexGf = self.Gf - sm.conj_sym_proj(self.Gf,range(self.dimN))
+        #print(numpy.amax(numpy.abs(complexGf)))
+        
+        (u,vH,dupdate) = sm.lowRankApprox(a=self.Gf -self.Df,projIter=self.projIter,axisu=self.cri.axisC,axisv=self.cri.axisM,dimN=self.dimN)
         for ii in range(0,2):
-            dhu = sporco.linalg.inner(numpy.conj(self.Df),u[ii], axis=self.cri.axisC)
-            uhu = sporco.linalg.inner(numpy.conj(u[ii]),u[ii],axis=self.cri.axisC)
-            uhu = uhu.reshape(uhu.shape + (1,))
-            dhu = numpy.reshape(dhu,dhu.shape[0:self.dimN] + (1,) + (1,) + (self.Df.shape[self.dimN + 2],) + (1,))
-            vh = vH[ii].reshape(vH[ii].shape[0:self.dimN] + (1,) + (1,) + (self.Df.shape[self.dimN + 2],) + (1,))
-            self.Ainv = sherman_morrison_python_functions.mdbi_dict_sm_r1update(self.Ainv, dhu, uhu, vh, self.dimN)
-        self.Df = self.Df + dupdate
-        self.R = sherman_morrison_python_functions.computeNorms(self.Df)
+            #Dftemp = Df
+            #Dftemp = sm.addDim(Dftemp)
+            #dftemp = numpy.swapaxes(Dftemp,self.cri.axisM,-1)
+            #dftemp = numpy.swapaxes(Dftemp,self.cri.axisC,-2)
+            self.Q.update(sm.uMatRep(u[ii],self.cri.axisC,self.cri.axisM),sm.vMatRep(vH[ii],self.cri.axisC,self.cri.axisM),sm.DfMatRep(self.Df,self.cri.axisC,self.cri.axisM))
+            #self.Q.update(numpy.swapaxes(u[ii],self.cri.axisC,-1),numpy.conj(numpy.swapaxes(vH[ii],self.cri.axisM,-1)),self.Dftemp)
+            self.Df = self.Df + u[ii]*vH[ii]
+        
+            #print('Is D real?')
+            #complexDf = self.Df - sm.conj_sym_proj(self.Df,range(self.dimN))
+            #print(numpy.amax(numpy.abs(complexDf)))
+            
+        self.R = sm.computeNorms(self.Df.reshape(self.Dfshape))/numpy.prod(self.cri.Nv)
+        #input()
+
 
     def getdict(self):
         """Get final dictionary."""
 
-        return sporco.linalg.ifftn(self.Df, self.cri.dsz[0:-1],self.cri.axisN) / self.R
+        return sporco.linalg.ifftn(self.Df, self.cri.dsz[0:-2],self.cri.axisN) / self.R
     def iteration_stats(self):
         """Construct iteration stats record tuple."""
 
@@ -277,12 +298,15 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             rsdl = (0.0,) * 2
             rho = (0.0,)
         else:
+            # Had to change RegL1 to Reg, because of CBPDN class
             objfn = (self.xstep_itstat.ObjFun, self.xstep_itstat.DFid,
-                     self.xstep_itstat.RegL1)
+                     self.xstep_itstat.Reg)
             rsdl = (self.xstep_itstat.PrimalRsdl,
                     self.xstep_itstat.DualRsdl)
             rho = (self.xstep_itstat.Rho,)
 
+
+        # These next two lines are specific to this class, which is why the parent method is not used.
         cnstr = numpy.linalg.norm(self.Df - self.Gf) / numpy.sqrt(numpy.prod(self.cri.Nv))
         dltd = numpy.linalg.norm(self.G - self.Gprv)
 

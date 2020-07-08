@@ -29,14 +29,13 @@ import sporco.metric as sm
 from sporco.admm import cbpdn
 import sporco.linalg
 import sherman_morrison_python_functions
-import cbpdn_factored_freq
+import cbpdn_fixed_rho
 
 """
 Load example image.
 """
 
-img = util.ExampleImages().image('kodim23.png', scaled=True,
-                                 idxexp=np.s_[160:416,60:316])
+img = util.ExampleImages().image('kodim23.png', scaled=True, idxexp=np.s_[160:416,60:316])
 
 
 """
@@ -58,10 +57,9 @@ plot.imview(util.tiledict(D), fgsz=(7, 7))
 
 
 R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
-D = D/R
-R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
-
-print(R)
+#D = D/R
+#R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
+rho = 0.5
 
 # code for testing:
 # compute A inverse
@@ -71,7 +69,7 @@ Df = sporco.linalg.fftn(D,sh.shape[0:2],(0,1))
 #Df = np.array([[1,2,1],[2,-1,2]])
 #Df = Df.reshape((2,1,1,3))
 #ainv = sherman_morrison_python_functions.woodburyIpUV(Df, sh.shape[0], sh.shape[1], Df.shape[2], Df.shape[3])
-Q = sherman_morrison_python_functions.factoredMatrix_qr(Df.reshape((a,b,1,1,noc,nof)))
+Q = sherman_morrison_python_functions.factoredMatrix_chol(Df.reshape((a,b,1,1,noc,nof)),rho=rho)
 
 
 Df_internal = Df.reshape(a,b,1,1,noc,nof)
@@ -79,13 +77,22 @@ Df_internal = Df.reshape(a,b,1,1,noc,nof)
 idmat = np.zeros((a,b,1,1,nof,nof),dtype=np.complex128)
 for inds in sherman_morrison_python_functions.loop_magic((a,b,1,1)):
     idmat[inds] = np.identity(nof)
- 
-dhdpi = idmat + np.matmul(sherman_morrison_python_functions.conj_tp(Df_internal),Df_internal)
+
+
+dhdpi = rho*idmat + np.matmul(sherman_morrison_python_functions.conj_tp(Df_internal),Df_internal)
 approx_idmat = Q.inv_mat(dhdpi,Df_internal)
+
 print('inverse test:')
-print(np.sum(np.abs(idmat - approx_idmat)))
+print(np.max(np.abs(idmat - approx_idmat)))
 
-
+#u = np.array([2,-1,1]).reshape((1,1,1,1,3))
+#v = np.array([1,0,0,0,-1,0,0,0,-2,2,0,0,0,1,-1,0,0,0,1,0,-1,0,0,0,0,0,1,-1,0,1,0,0]).reshape((1,1,1,1,32))/1000.
+#Df_internal_new = Df_internal + u.reshape(u.shape + (1,))*np.conj(v.reshape((1,1,1,1,1,32)))
+#dhdpi_new = rho*idmat + np.matmul(sherman_morrison_python_functions.conj_tp(Df_internal_new),Df_internal_new)
+#Q.update(u,v,Df_internal)
+#approx_idmat = Q.inv_mat(dhdpi_new,Df_internal_new)
+#print('inverse test:')
+#print(np.max(np.abs(idmat - approx_idmat)))
 
 #print(66*ainv)
 #print(66*ainv2)
@@ -118,7 +125,7 @@ print(np.sum(np.abs(idmat - approx_idmat)))
 lmbda = 1e-1
 #opt = cbpdn.ConvBPDN.Options({'Verbose': True, 'MaxMainIter': 200,
  #                             'RelStopTol': 5e-3, 'AuxVarObj': False})
-opt = cbpdn_factored_freq.CBPDN_FactoredScaledDict.Options({'Verbose': True, 'rho': 0.05, 'AutoRho': {'Enabled': True},
+opt = cbpdn_fixed_rho.CBPDN_FactoredFixedRho.Options({'Verbose': True, 'rho': rho, 'AutoRho': {'Enabled': False},
                     'RelaxParam': 1.0, 'RelStopTol': 1e-7, 'MaxMainIter': 50,
                     'FastSolve': False, 'DataType': np.complex128})
 
@@ -137,9 +144,11 @@ W1 = np.ones((sh.shape[0],sh.shape[1],1,1,1))
 Df = Df.reshape((Df.shape[0],Df.shape[1],Df.shape[2],Df.shape[3]))
 # code for testing
 #b2 = cbpdn_freq.CBPDN_ScaledDict(Ainv=ainv, DR=Df, R=R, S=sh, W=W, W1=W1, lmbda=lmbda, Ndim=2, opt=opt2)
-b2 = cbpdn_factored_freq.CBPDN_FactoredScaledDict(Q=Q,DR=Df,S=sh,R=R,W=W,W1=W1,lmbda=lmbda,dimN=2,opt=opt)
 
-x2 = b2.solve()
+
+b = cbpdn_fixed_rho.CBPDN_FactoredFixedRho(Q=Q,DR=Df,S=sh,R=R,W=W,W1=W1,lmbda=lmbda,dimN=2,opt=opt)
+
+x = b.solve()
 
 
 
@@ -147,52 +156,52 @@ x2 = b2.solve()
 Reconstruct image from sparse representation.
 """
 
-#shr = b.reconstruct().squeeze()
-#imgr = sl + shr
-#print("Reconstruction PSNR: %.2fdB\n" % sm.psnr(img, imgr))
+shr = b.reconstruct().squeeze()
+imgr = sl + shr
+print("Reconstruction PSNR: %.2fdB\n" % sm.psnr(img, imgr))
 
 
 #"""
 #Display low pass component and sum of absolute values of coefficient maps of highpass component.
 #"""
 
-#fig = plot.figure(figsize=(14, 7))
-#plot.subplot(1, 2, 1)
-#plot.imview(sl, title='Lowpass component', fig=fig)
-#plot.subplot(1, 2, 2)
-#plot.imview(np.sum(abs(X), axis=b.cri.axisM).squeeze(), cmap=plot.cm.Blues,
-#            title='Sparse representation', fig=fig)
-#fig.show()
+fig = plot.figure(figsize=(14, 7))
+plot.subplot(1, 2, 1)
+plot.imview(sl, title='Lowpass component', fig=fig)
+plot.subplot(1, 2, 2)
+plot.imview(np.sum(abs(x), axis=b.cri.axisM).squeeze(), cmap=plot.cm.Blues,
+            title='Sparse representation', fig=fig)
+fig.show()
 
 
 """
 Display original and reconstructed images.
 """
 
-#fig = plot.figure(figsize=(14, 7))
-#plot.subplot(1, 2, 1)
-#plot.imview(img, title='Original', fig=fig)
-#plot.subplot(1, 2, 2)
-#plot.imview(imgr, title='Reconstructed', fig=fig)
-#fig.show()
+fig = plot.figure(figsize=(14, 7))
+plot.subplot(1, 2, 1)
+plot.imview(img, title='Original', fig=fig)
+plot.subplot(1, 2, 2)
+plot.imview(np.real(imgr), title='Reconstructed', fig=fig)
+fig.show()
 
 
 """
 Get iterations statistics from solver object and plot functional value, ADMM primary and dual residuals, and automatically adjusted ADMM penalty parameter against the iteration number.
 """
 
-#its = b.getitstat()
-#fig = plot.figure(figsize=(20, 5))
-#plot.subplot(1, 3, 1)
-#plot.plot(its.ObjFun, xlbl='Iterations', ylbl='Functional', fig=fig)
-#plot.subplot(1, 3, 2)
-#plot.plot(np.vstack((its.PrimalRsdl, its.DualRsdl)).T,
-#          ptyp='semilogy', xlbl='Iterations', ylbl='Residual',
-#          lgnd=['Primal', 'Dual'], fig=fig)
-#plot.subplot(1, 3, 3)
-#plot.plot(its.Rho, xlbl='Iterations', ylbl='Penalty Parameter', fig=fig)
-#fig.show()
+its = b.getitstat()
+fig = plot.figure(figsize=(20, 5))
+plot.subplot(1, 3, 1)
+plot.plot(its.ObjFun, xlbl='Iterations', ylbl='Functional', fig=fig)
+plot.subplot(1, 3, 2)
+plot.plot(np.vstack((its.PrimalRsdl, its.DualRsdl)).T,
+          ptyp='semilogy', xlbl='Iterations', ylbl='Residual',
+          lgnd=['Primal', 'Dual'], fig=fig)
+plot.subplot(1, 3, 3)
+plot.plot(its.Rho, xlbl='Iterations', ylbl='Penalty Parameter', fig=fig)
+fig.show()
 
 
 # Wait for enter on keyboard
-#input()
+input()

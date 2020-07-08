@@ -8,14 +8,14 @@ import sporco.prox
 import numpy as np
 import copy
 
-class CBPDN_FactoredScaledDict(sporco.admm.admm.ADMM):
+class CBPDN_FactoredFixedRho(sporco.admm.admm.ADMM):
     class Options(sporco.admm.admm.ADMM.Options):
         r"""
         """
         defaults = copy.deepcopy(sporco.admm.admm.ADMM.Options.defaults)
         defaults.update({'AuxVarObj': False, 'ReturnX': False,
                          'RelaxParam': 1.8})
-        defaults['AutoRho'].update({'Enabled': True, 'Period': 1,
+        defaults['AutoRho'].update({'Enabled': False, 'Period': 1,
                                     'AutoScaling': True, 'Scaling': 1000.0,
                                     'RsdlRatio': 1.2})
 
@@ -48,13 +48,12 @@ class CBPDN_FactoredScaledDict(sporco.admm.admm.ADMM):
         ushape = yshape
         self.DR = np.asarray(DR.reshape(self.cri.shpD))
         self.S = np.asarray(S.reshape(self.cri.shpS))
-        super(CBPDN_FactoredScaledDict, self).__init__(Nx, yshape, ushape, DR.dtype, opt)
+        super(CBPDN_FactoredFixedRho, self).__init__(Nx, yshape, ushape, DR.dtype, opt)
         self.Q = Q
         self.R = R
         self.W = W
         self.W1 = W1
         self.lmbda = lmbda
-        self.opt = opt
 
         # for testing purposes:
         self.X = np.zeros(self.cri.Nv + (self.cri.C,self.cri.K,1,))
@@ -109,21 +108,23 @@ class CBPDN_FactoredScaledDict(sporco.admm.admm.ADMM):
         r"""Minimise Augmented Lagrangian with respect to :math:`\mathbf{x}`.
         """
 
-        dhypu = sporco.linalg.inner(np.conj(self.DR),(self.block_sep0(self.Y) + self.block_sep0(self.U)/self.rho),self.cri.axisC)
-        zpg = self.block_sep1(self.Y) + self.block_sep1(self.U)/self.rho
+        dhy = sporco.linalg.inner(np.conj(self.DR),self.block_sep0(self.Y),self.cri.axisC)
+        zpg = self.rho*self.block_sep1(self.Y) + self.block_sep1(self.U)
         #print((dhypu + zpg).shape)
-        self.X = self.Q.inv_vec(dhypu + zpg,self.DR.reshape(self.DR.shape[0:2] + (1,1,) + (self.cri.Cd,self.cri.M,)))
+        self.X = self.Q.inv_vec(dhy + zpg,self.DR.reshape(self.DR.shape[0:2] + (1,1,) + (self.cri.Cd,self.cri.M,)))
 
     def ystep(self):
         r"""Minimise Augmented Lagrangian with respect to :math:`\mathbf{y}`.
-
+        self.AX should be used where the constraints affect the ystep, but not in cases where x appears in the objective. Currently, this ystep needs to be fixed. The overrelaxed AX can be nonzero where nonrelaxed AX is zero. This will affect Y0S. I will need to rederive the equations to find the correct solution here.
         """
-
-        idftnAXmU = -self.ifft(self.AX + self.U/self.rho)
-        Dxme = self.block_sep0(idftnAXmU)
+        
+        idftDX = self.ifft(sporco.linalg.inner(self.DR,self.X,self.cri.axisM))
+        idftU = self.ifft(self.block_sep0(self.U))
+        idftAX = self.ifft(self.block_sep0(self.AX))
         self.Yprev = self.Y
-        Y0S = np.logical_not(self.W)*Dxme + self.W*(1/(1 + self.rho)*(self.S + self.rho*Dxme))
-        Y1S = self.W1*sporco.prox.prox_l1(self.block_sep1(idftnAXmU), self.lmbda*self.R/self.rho)
+        Y0S = np.logical_not(self.W)*idftDX + self.W*(1/(1 + self.rho)*(self.rho*(self.S + idftAX) + idftDX + idftU))
+        idftnAXmU = -self.ifft(self.block_sep1(self.AX) + self.block_sep1(self.U)/self.rho)
+        Y1S = self.W1*sporco.prox.prox_l1(idftnAXmU, self.lmbda*self.R/self.rho)
 
         self.Ys = self.block_cat(Y0S,Y1S)
         self.Y = self.fft(self.Ys)
@@ -136,16 +137,16 @@ class CBPDN_FactoredScaledDict(sporco.admm.admm.ADMM):
         :meth:`rsdl_s`, :meth:`rsdl_rn`, and :meth:`rsdl_sn` are not
         overridden.
         """        
-        return self.block_cat(-sporco.linalg.inner(self.DR,X,self.cri.axisM),-X)
+        return self.block_cat(np.zeros(self.block_sep0(self.Y).shape),-X)
 
     def cnst_AT(self,X):
-        return -sporco.linalg.inner(np.conj(self.DR),self.block_sep0(X),self.cri.axisC) - self.block_sep1(X)
+        return  - self.block_sep1(X)
 
     def cnst_B(self,X):
-        return X
+        return self.block_cat(-(self.W*self.block_sep0(X)),self.block_sep1(X))
 
     def cnst_c(self):
-        return np.array([0])
+        return self.block_cat(-self.fft(self.S),np.zeros(self.X.shape))
 
     def reconstruct(self):
         return self.ifft(sporco.linalg.inner(self.DR, self.X, axis=self.cri.axisM)) if self.opt['ReturnX'] else \
