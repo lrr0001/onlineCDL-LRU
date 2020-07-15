@@ -190,6 +190,8 @@ plot.plot(np.vstack((its.DeltaD, its.Eta)).T, xlbl='Iterations',
           lgnd=('Delta D', 'Eta'), fig=fig)
 fig.show()
 
+fig2 = plot.plot(np.vstack((its.Cnstr,its.DeltaD)).T, xlbl='Iterations', ylbl='difference',lgnd=['approx','delta'])
 
+fig2.show()
 # Wait for enter on keyboard
 input()

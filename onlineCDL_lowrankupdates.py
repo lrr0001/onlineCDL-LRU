@@ -110,7 +110,8 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         cri = cr.CSC_ConvRepIndexing(Df0,Df0[0:dimN + 1])
         self.Df = Df0.reshape(cri.shpD)
         self.Gf = self.Df
-        self.Gprv = sporco.linalg.ifftn(self.Df,self.dsz[0:-2],tuple(range(0,dimN)))
+        temp = sporco.linalg.ifftn(self.Df,[self.Dfshape[ii] for ii in range(0,dimN)],tuple(range(0,dimN)))
+        self.Gprv = temp[0:self.dsz[0],0:self.dsz[1]]
         self.G = self.Gprv
         self.R = sm.computeNorms(Df0)/numpy.prod(self.Df.shape[0:dimN])
         print('Is D0 real?')
@@ -236,17 +237,21 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
         # Compute X D - S
         Ryf = sl.inner(self.Zf, self.Gf, axis=self.cri.axisM) - self.Sf
-        #print('Is Ry real?')
-        #complexRyf = Ryf - sm.conj_sym_proj(Ryf,range(self.dimN))
-        #print(numpy.amax(numpy.abs(complexRyf)))
-
+        print('Is Ry real?')
+        realRyf = sm.conj_sym_proj(Ryf,range(self.dimN))
+        complexRyf = Ryf - realRyf
+        print(numpy.amax(numpy.abs(complexRyf)))
+        Ryf = realRyf
 
         # Compute gradient
         gradf = sl.inner(numpy.conj(self.Zf), Ryf, axis=self.cri.axisK)
-        #print('Is grad real?')
-        #complexgrad = gradf - sm.conj_sym_proj(gradf,range(self.dimN))
-        #print(numpy.amax(numpy.abs(complexgrad)))
+        print('Is grad real?')
+        realgradf = sm.conj_sym_proj(gradf,range(self.dimN))
+        complexgrad = gradf - realgradf
+        print(numpy.amax(numpy.abs(complexgrad)))
+        gradf = realgradf
 
+        
         # If multiple channel signal, single channel dictionary
         #if self.cri.C > 1 and self.cri.Cd == 1:
         #    gradf = np.sum(gradf, axis=self.cri.axisC, keepdims=True)
@@ -254,19 +259,25 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         # Update gradient step
         self.eta = self.eta_a / (self.j + self.eta_b)
         
-        gradfr = sl.ifftn(gradf, self.cri.dsz[0:-2], self.cri.axisN)
-
+        #gradfr = sl.ifftn(gradf, self.cri.dsz[0:-2], self.cri.axisN) # something weird is going on here. Result should be real, but it is not.
+        gradfr = sl.ifftn(gradf,self.cri.Nv, self.cri.axisN)
         self.Gprv = self.G
 
-        self.G = self.Pcn(self.G - self.eta*gradfr)
+        #self.G = self.Pcn(self.G - self.eta*gradfr)
+        newG = self.G - self.eta*gradfr[0:self.cri.dsz[0],0:self.cri.dsz[1]] # assumes dimN = 2
+        newG = newG - numpy.mean(newG,axis=self.cri.axisN,keepdims=True)
+        self.G = newG/sm.computeNorms(newG)
        
 
-
         self.Gf = sl.fftn(self.G, self.cri.Nv,self.cri.axisN)
-        #print('Is G real?')
-        #complexGf = self.Gf - sm.conj_sym_proj(self.Gf,range(self.dimN))
-        #print(numpy.amax(numpy.abs(complexGf)))
-        
+        print('Is G real?')
+        realGf = sm.conj_sym_proj(self.Gf,range(self.dimN))
+        complexGf = self.Gf - realGf
+        print(numpy.amax(numpy.abs(complexGf)))
+        self.Gf = realGf
+        #import pdb; pdb.set_trace()
+
+
         (u,vH,dupdate) = sm.lowRankApprox(a=self.Gf -self.Df,projIter=self.projIter,axisu=self.cri.axisC,axisv=self.cri.axisM,dimN=self.dimN)
         for ii in range(0,2):
             #Dftemp = Df
@@ -277,10 +288,13 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             #self.Q.update(numpy.swapaxes(u[ii],self.cri.axisC,-1),numpy.conj(numpy.swapaxes(vH[ii],self.cri.axisM,-1)),self.Dftemp)
             self.Df = self.Df + u[ii]*vH[ii]
         
-            #print('Is D real?')
-            #complexDf = self.Df - sm.conj_sym_proj(self.Df,range(self.dimN))
-            #print(numpy.amax(numpy.abs(complexDf)))
+            print('Is D real?')
+            realDf = sm.conj_sym_proj(self.Df,range(self.dimN))
+            complexDf = self.Df - realDf
+            print(numpy.amax(numpy.abs(complexDf)))
+            self.Df = realDf
             
+        
         self.R = sm.computeNorms(self.Df.reshape(self.Dfshape))/numpy.prod(self.cri.Nv)
         #input()
 
@@ -288,7 +302,8 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
     def getdict(self):
         """Get final dictionary."""
 
-        return sporco.linalg.ifftn(self.Df, self.cri.dsz[0:-2],self.cri.axisN) / self.R
+        dict = sporco.linalg.ifftn(self.Df, self.cri.Nv,self.cri.axisN) / self.R
+        return dict[0:self.dsz[0],0:self.dsz[1]]
     def iteration_stats(self):
         """Construct iteration stats record tuple."""
 
