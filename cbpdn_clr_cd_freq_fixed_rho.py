@@ -63,6 +63,7 @@ rho = 0.5
 
 # code for testing:
 # compute A inverse
+#Df = sporco.linalg.fftn(D,sh.shape[0:2],(0,1))
 Df = sporco.linalg.fftn(D,sh.shape[0:2],(0,1))
 [a,b,noc,nof]= Df.shape
 #sh = np.zeros((2,1,1))

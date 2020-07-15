@@ -51,6 +51,7 @@ class factoredMatrix_aIpBhB(factoredMatrix):
         e2 = addDim(e2)
 
         if self.flipped is True:
+            # I think there is a numpy function that does this already
             u_broadcast = numpy.empty(baseShape + (u.shape[-1],) + (1,),dtype=u.dtype) # allows broadcasting for u
             u_broadcast[:] = addDim(u)
             dv = numpy.matmul(D,addDim(v))
