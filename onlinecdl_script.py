@@ -129,6 +129,9 @@ W1[slice(filterSz[0] - 1,filterSz[0] + increment[0] - 1), slice(filterSz[1] - 1,
 W = W.reshape(W.shape +  3*(1,))
 W1 = W1.reshape(W1.shape + 3*(1,))
 
+W[:] = True
+W1[:] = True
+
 """
 Create solver object and solve.
 """
