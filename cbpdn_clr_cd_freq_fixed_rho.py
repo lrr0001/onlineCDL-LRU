@@ -25,7 +25,7 @@ import numpy as np
 
 from sporco import util
 from sporco import plot
-import sporco.metric as sm
+import sporco.metric as smet
 from sporco.admm import cbpdn
 import sporco.linalg
 import sherman_morrison_python_functions
@@ -142,7 +142,7 @@ Initialise and run CSC solver.
 W = np.ones((sh.shape[0],sh.shape[1],1,1,1))
 W1 = np.ones((sh.shape[0],sh.shape[1],1,1,1))
 
-Df = Df.reshape((Df.shape[0],Df.shape[1],Df.shape[2],Df.shape[3]))
+#Df = Df.reshape((Df.shape[0],Df.shape[1],Df.shape[2],Df.shape[3]))
 # code for testing
 #b2 = cbpdn_freq.CBPDN_ScaledDict(Ainv=ainv, DR=Df, R=R, S=sh, W=W, W1=W1, lmbda=lmbda, Ndim=2, opt=opt2)
 
@@ -159,7 +159,7 @@ Reconstruct image from sparse representation.
 
 shr = b.reconstruct().squeeze()
 imgr = sl + shr
-print("Reconstruction PSNR: %.2fdB\n" % sm.psnr(img, imgr))
+print("Reconstruction PSNR: %.2fdB\n" % smet.psnr(img, imgr))
 
 
 #"""
