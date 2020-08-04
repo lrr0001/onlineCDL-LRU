@@ -49,11 +49,13 @@ start = [(10,100),(0,60),(0,160),(0,210),(0,30)]
 # S is a list of high-freqency images (512 x 512)
 S = []
 Sl = []
+Sh = []
 for imgnum in range(len(start)):
     temp = exim.image(imagenames[imgnum], idxexp=np.s_[start[imgnum][0]:start[imgnum][0] + 512,start[imgnum][1]:start[imgnum][1] + 512])
     sl,sh = util.tikhonov_filter(temp, fltlmbd, npd)
-    S.append(sh)
+    Sh.append(sh)
     Sl.append(sl)
+    S.append(sh + sl)
 
 #S1 = exim.image('barbara.png', idxexp=np.s_[10:522, 100:612])
 #S2 = exim.image('kodim23.png', idxexp=np.s_[:, 60:572])
@@ -85,6 +87,12 @@ np.random.seed(12345)
 
 #R = sherman_morrison_python_functions.computeNorms(Df,dimN=2)
 D = util.convdicts()['RGB:8x8x3x64']
+D[0,0] = D[0,0]/3
+D[0,7] = D[0,7]/3
+D[7,0] = D[7,0]/3
+D[7,7] = D[7,7]/3
+R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
+D = D/R
 R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
 rho = 0.5
 
@@ -94,6 +102,7 @@ Df = sporco.linalg.fftn(D,(increment[0] + 2*(filterSz[0] - 1),increment[1] + 2*(
 Df = (Df + sherman_morrison_python_functions.conj_sym_proj(Df,range(2)))/2
 [a,b,noc,nof]= Df.shape
 Q = sherman_morrison_python_functions.factoredMatrix_chol(Df.reshape((a,b,1,1,noc,nof)),rho=rho)
+Qold = sherman_morrison_python_functions.factoredMatrix_chol(Df.reshape((a,b,1,1,noc,nof)),rho=rho)
 
 #idmat = np.zeros((78,78,1,1,nof,nof))
 #for mm in range(nof):
@@ -159,7 +168,7 @@ for imgnum in range(len(S)):
                 rinds = 127 - abs(np.arange(r - 127,r+increment[1] + 2*(filterSz[1] - 1) - 127))
             else:
                 rinds = abs(np.arange(r,r+increment[1] + 2*(filterSz[1] - 1)))       
-            Scurr = S[imgnum][np.ix_(cinds,rinds)]
+            Scurr = Sh[imgnum][np.ix_(cinds,rinds)]
             d.solve(Scurr)
 
 
@@ -196,5 +205,63 @@ fig.show()
 fig2 = plot.plot(np.vstack((its.Cnstr,its.DeltaD)).T, xlbl='Iterations', ylbl='difference',lgnd=['approx','delta'])
 
 fig2.show()
-# Wait for enter on keyboard
-input()
+
+import cbpdn_fixed_rho
+import sporco.metric as smet
+from sporco import plot
+Dfnew = d.Df.squeeze()
+for imgnum in range(len(S)):
+    for ii in range(0,128,increment[0]):
+        c = ii - filterSz[0] + 1 
+        if c + increment[0] + 2*(filterSz[0] - 1) >= 128:
+            cinds = 127 - abs(np.arange(c - 127,c+increment[0] + 2*(filterSz[0] - 1) - 127))
+        else:
+            cinds = abs(np.arange(c,c+increment[0] + 2*(filterSz[0] - 1)))
+        for jj in range(0,128,increment[1]):
+            r = jj - filterSz[1]
+            if r + increment[1] + 2*(filterSz[1] - 1) >= 128:
+                rinds = 127 - abs(np.arange(r - 127,r+increment[1] + 2*(filterSz[1] - 1) - 127))
+            else:
+                rinds = abs(np.arange(r,r+increment[1] + 2*(filterSz[1] - 1)))       
+            Shcurr = Sh[imgnum][np.ix_(cinds,rinds)]
+            bold = cbpdn_fixed_rho.CBPDN_FactoredFixedRho(Q=Qold,DR=Df,S=Shcurr,R=R,W=W,W1=W1,lmbda=lmbda,dimN=2,opt=opt['CBPDN'])
+            xold = bold.solve()
+            bnew = cbpdn_fixed_rho.CBPDN_FactoredFixedRho(Q=d.Q,DR=Dfnew,S=Shcurr,R=d.R,W=W,W1=W1,lmbda=lmbda,dimN=2,opt=opt['CBPDN'])
+            xnew = bnew.solve()
+            shr = bold.reconstruct().squeeze()
+            sl = Sl[imgnum][np.ix_(cinds,rinds)]
+            Scurr = S[imgnum][np.ix_(cinds,rinds)]
+            imgrold = sl + shr
+            print("Initial dictionary reconstruction PSNR: %.2fdB\n" % smet.psnr(Scurr, imgrold.real))
+            shr = bnew.reconstruct().squeeze()
+            imgrnew = sl + shr
+            print("Final dictionary reconstruction PSNR: %.2fdB\n" % smet.psnr(Scurr, imgrnew.real))
+            fig = plot.figure(figsize=(14, 14))
+            plot.subplot(2,2,1)
+            plot.imview(Scurr, title='Original', fig=fig)
+            plot.subplot(2,2,2)
+            plot.imview(sl, title='Low-pass', fig=fig)
+            plot.subplot(2,2,3)
+            plot.imview(imgrold.real, title='Reconstruction (initial dictionary)', fig=fig)
+            plot.subplot(2,2,4)
+            plot.imview(imgrnew.real, title='Reconstruction (final dictionary)', fig=fig)
+            plot.subplot(2,2,4)
+            fig.show()
+            itsold = bold.getitstat()
+            itsnew = bnew.getitstat()
+            fig = plot.figure(figsize=(14,7))
+            plot.subplot(1, 2, 1)
+            plot.plot(np.vstack((itsold.ObjFun,itsnew.ObjFun)).T, xlbl='Iterations', ylbl='Functional',lgnd=['init dict','final dict'], fig=fig)
+            plot.subplot(1, 2, 2)
+            plot.plot(np.vstack((itsold.PrimalRsdl, itsold.DualRsdl,itsnew.PrimalRsdl,itsnew.DualRsdl)).T,
+                ptyp='semilogy', xlbl='Iterations', ylbl='Residual',
+                lgnd=['Primal-init dict', 'Dual-init dict','Primal-final dict','Dual-final dict'], fig=fig)
+            fig.show()
+            print("Initial dictionary objective: %.2f\n" % itsold.ObjFun[-1])
+            print("Final dictionary objective: %.2f\n" % itsnew.ObjFun[-1])
+            
+            input()
+
+
+
+            
