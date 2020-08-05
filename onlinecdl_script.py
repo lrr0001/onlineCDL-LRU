@@ -86,11 +86,11 @@ np.random.seed(12345)
 #Q = sherman_morrison_python_functions.factoredMatrix_chol(Df)
 
 #R = sherman_morrison_python_functions.computeNorms(Df,dimN=2)
-D = util.convdicts()['RGB:8x8x3x64']
-D[0,0] = D[0,0]/3
-D[0,7] = D[0,7]/3
-D[7,0] = D[7,0]/3
-D[7,7] = D[7,7]/3
+Dutil = util.convdicts()['RGB:8x8x3x64']
+Drand = np.random.randn(8,8,3,64)
+Rutil = sherman_morrison_python_functions.computeNorms(v=Dutil,dimN=2)
+Rrand = sherman_morrison_python_functions.computeNorms(v=Drand,dimN=2)
+D = Dutil/Rutil + 0.5*Drand/Rrand
 R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
 D = D/R
 R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
