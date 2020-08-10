@@ -195,7 +195,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
             # apparently, W isn't supposed to be boolean.
             xstep = cbpdn_fixed_rho.CBPDN_FactoredFixedRho(Q=self.Q, DR=self.Df.reshape(self.Dfshape),S=S, R=self.R, W=self.W, W1=self.W1, lmbda=lmbda, dimN=self.dimN, opt=self.opt['CBPDN'])
-            xstep.solve()
+            temp = xstep.solve()
             #import pdb; pdb.set_trace()
             self.Zf = xstep.getcoef()
             self.Zf = self.Zf.reshape(self.cri.shpX)
@@ -208,9 +208,8 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             #print(numpy.amax(numpy.abs(self.Zf)))
             #print('spatial:')
             #print(numpy.amax(numpy.abs(sporco.linalg.ifftn(self.Zf,self.cri.Nv, self.cri.axisN))))
-
             self.xstep_itstat = xstep.itstat[-1] if xstep.itstat else None
-            print('xstep complete.')
+            #print('xstep complete.')
 
 
 
@@ -237,18 +236,18 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
         # Compute X D - S
         Ryf = sl.inner(self.Zf, self.Gf, axis=self.cri.axisM) - self.Sf
-        print('Is Ry real?')
+        #print('Is Ry real?')
         realRyf = sm.conj_sym_proj(Ryf,range(self.dimN))
         complexRyf = Ryf - realRyf
-        print(numpy.amax(numpy.abs(complexRyf)))
+        #print(numpy.amax(numpy.abs(complexRyf)))
         Ryf = realRyf
 
         # Compute gradient
         gradf = sl.inner(numpy.conj(self.Zf), Ryf, axis=self.cri.axisK)
-        print('Is grad real?')
+        #print('Is grad real?')
         realgradf = sm.conj_sym_proj(gradf,range(self.dimN))
         complexgrad = gradf - realgradf
-        print(numpy.amax(numpy.abs(complexgrad)))
+        #print(numpy.amax(numpy.abs(complexgrad)))
         gradf = realgradf
 
         
@@ -270,10 +269,10 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
        
 
         self.Gf = sl.fftn(self.G, self.cri.Nv,self.cri.axisN)
-        print('Is G real?')
+        #print('Is G real?')
         realGf = sm.conj_sym_proj(self.Gf,range(self.dimN))
         complexGf = self.Gf - realGf
-        print(numpy.amax(numpy.abs(complexGf)))
+        #print(numpy.amax(numpy.abs(complexGf)))
         self.Gf = realGf
         #import pdb; pdb.set_trace()
 
@@ -288,16 +287,15 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             #self.Q.update(numpy.swapaxes(u[ii],self.cri.axisC,-1),numpy.conj(numpy.swapaxes(vH[ii],self.cri.axisM,-1)),self.Dftemp)
             self.Df = self.Df + u[ii]*vH[ii]
         
-            print('Is D real?')
+            #print('Is D real?')
             realDf = sm.conj_sym_proj(self.Df,range(self.dimN))
             complexDf = self.Df - realDf
-            print(numpy.amax(numpy.abs(complexDf)))
+            #print(numpy.amax(numpy.abs(complexDf)))
             self.Df = realDf
             
         
-        self.R = sm.computeNorms(self.Df.reshape(self.Dfshape))/numpy.prod(self.cri.Nv)
+        self.R = sm.computeNorms(self.Df.reshape(self.Dfshape)/numpy.prod(self.cri.Nv))
         #input()
-
 
     def getdict(self):
         """Get final dictionary."""
@@ -306,7 +304,6 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         return dict[0:self.dsz[0],0:self.dsz[1]]
     def iteration_stats(self):
         """Construct iteration stats record tuple."""
-
         tk = self.timer.elapsed(self.opt['IterTimer'])
         if self.xstep_itstat is None:
             objfn = (0.0,) * 3
@@ -322,7 +319,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
 
         # These next two lines are specific to this class, which is why the parent method is not used.
-        cnstr = numpy.linalg.norm(self.Df - self.Gf) / numpy.sqrt(numpy.prod(self.cri.Nv))
+        cnstr = numpy.linalg.norm(self.Df - self.Gf) / numpy.prod(self.cri.Nv)
         dltd = numpy.linalg.norm(self.G - self.Gprv)
 
         tpl = (self.j,) + objfn + rsdl + rho + (cnstr, dltd, self.eta) + \

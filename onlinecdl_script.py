@@ -125,7 +125,7 @@ lmbda = 1e-1
 opt = onlinecdl.OnlineConvBPDNDictLearn.Options({
                 'Verbose': False, 'ZeroMean': False, 'eta_a': 10.0,
                 'eta_b': 20.0, 'DataType': np.complex128,
-                'CBPDN': {'rho': rho, 'AutoRho': {'Enabled': False},
+                'CBPDN': {'Verbose': False, 'rho': rho, 'AutoRho': {'Enabled': False},
                     'RelaxParam': 1.0, 'RelStopTol': 1e-7, 'MaxMainIter': 50,
                     'FastSolve': False, 'DataType': np.complex128}})
 
@@ -169,7 +169,7 @@ for imgnum in range(len(S)):
             else:
                 rinds = abs(np.arange(r,r+increment[1] + 2*(filterSz[1] - 1)))       
             Scurr = Sh[imgnum][np.ix_(cinds,rinds)]
-            d.solve(Scurr)
+            temp = d.solve(Scurr)
 
 
 
