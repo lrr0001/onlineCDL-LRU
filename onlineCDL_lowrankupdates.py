@@ -295,12 +295,12 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             self.Df = realDf
             
         
-        #self.R = sm.computeNorms(self.Df.reshape(self.Dfshape)/numpy.prod(self.cri.Nv))
-        D = sporco.linalg.ifftn(self.Df, self.cri.Nv,self.cri.axisN)
-        R = sm.computeNorms(D[0:self.dsz[0],0:self.dsz[1]])
-        tempD = self.getdict()
-        print('Maximum dictionary magnitude:')
-        print(numpy.amax(numpy.abs(tempD)))
+        self.R = sm.computeNorms(self.Df.reshape(self.Dfshape)/numpy.sqrt(numpy.prod(self.cri.Nv)))
+        #D = sporco.linalg.ifftn(self.Df, self.cri.Nv,self.cri.axisN)
+        #R = sm.computeNorms(D[0:self.dsz[0],0:self.dsz[1]])
+        #tempD = self.getdict()
+        #print('Maximum dictionary magnitude:')
+        #print(numpy.amax(numpy.abs(tempD)))
         #input()
 
     def getdict(self):
@@ -325,7 +325,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
 
         # These next two lines are specific to this class, which is why the parent method is not used.
-        cnstr = numpy.linalg.norm(self.Df - self.Gf) / numpy.prod(self.cri.Nv)
+        cnstr = numpy.linalg.norm(self.Df - self.Gf) / numpy.sqrt(numpy.prod(self.cri.Nv))
         dltd = numpy.linalg.norm(self.G - self.Gprv)
 
         tpl = (self.j,) + objfn + rsdl + rho + (cnstr, dltd, self.eta) + \
