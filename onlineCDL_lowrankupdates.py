@@ -113,7 +113,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         temp = sporco.linalg.ifftn(self.Df,[self.Dfshape[ii] for ii in range(0,dimN)],tuple(range(0,dimN)))
         self.Gprv = temp[0:self.dsz[0],0:self.dsz[1]]
         self.G = self.Gprv
-        self.R = sm.computeNorms(Df0)/numpy.prod(self.Df.shape[0:dimN])
+        self.R = sm.computeNorms(self.G)
         print('Is D0 real?')
         complexGf = self.Gf - sm.conj_sym_proj(self.Gf,range(self.dimN))
         print(numpy.amax(numpy.abs(complexGf)))
@@ -266,7 +266,8 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         newG = self.G - self.eta*gradfr[0:self.cri.dsz[0],0:self.cri.dsz[1]] # assumes dimN = 2
         newG = newG - numpy.mean(newG,axis=self.cri.axisN,keepdims=True)
         self.G = newG/sm.computeNorms(newG)
-       
+        print('Maximum value G magnitude:')
+        print(numpy.amax(numpy.abs(self.G)))
 
         self.Gf = sl.fftn(self.G, self.cri.Nv,self.cri.axisN)
         #print('Is G real?')
@@ -294,7 +295,12 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             self.Df = realDf
             
         
-        self.R = sm.computeNorms(self.Df.reshape(self.Dfshape)/numpy.prod(self.cri.Nv))
+        #self.R = sm.computeNorms(self.Df.reshape(self.Dfshape)/numpy.prod(self.cri.Nv))
+        D = sporco.linalg.ifftn(self.Df, self.cri.Nv,self.cri.axisN)
+        R = sm.computeNorms(D[0:self.dsz[0],0:self.dsz[1]])
+        tempD = self.getdict()
+        print('Maximum dictionary magnitude:')
+        print(numpy.amax(numpy.abs(tempD)))
         #input()
 
     def getdict(self):
