@@ -11,6 +11,7 @@ from sporco import cuda
 from sporco.dictlrn import dictlrn
 import sherman_morrison_python_functions as sm
 import numpy
+import copy
 
 
 
@@ -35,7 +36,38 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
     itstat_fields_extra = ()
     """Non-standard fields in IterationStats; see :meth:`itstat_extra`"""
 
+    class Options(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLearn.Options):
+        r"""Online masked CBPDN dictionary learning algorithm options.
 
+        Options are the same as those of
+        :class:`OnlineConvBPDNDictLearn.Options`, except for
+
+          ``CBPDN`` : Options :class:`.admm.cbpdn.ConvBPDNMaskDcpl.Options`.
+        """
+
+        defaults = copy.deepcopy(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLearn.Options.defaults)
+        defaults.update({'CBPDN': copy.deepcopy(
+            cbpdn.ConvBPDNMaskDcpl.Options.defaults)})
+
+
+        def __init__(self, opt=None):
+            """
+            Parameters
+            ----------
+            opt : dict or None, optional (default None)
+              OnlineConvBPDNMaskDictLearn algorithm options
+            """
+
+            sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLearn.Options.__init__(self, {
+                'CBPDN': cbpdn.ConvBPDNMaskDcpl.Options({
+                    'AutoRho': {'Period': 10, 'AutoScaling': False,
+                                'RsdlRatio': 10.0, 'Scaling': 2.0,
+                                'RsdlTarget': 1.0}})
+                })
+
+            if opt is None:
+                opt = {}
+            self.update(opt)
 
 
     def __init__(self, Q, Df0, W, W1, dsz=None, lmbda=None, projIter=5, opt=None, dimK=None, dimN=2):
@@ -112,7 +144,8 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         self.Gf = self.Df
         temp = sporco.linalg.ifftn(self.Df,[self.Dfshape[ii] for ii in range(0,dimN)],tuple(range(0,dimN)))
         self.Gprv = temp[0:self.dsz[0],0:self.dsz[1]]
-        self.G = self.Gprv
+        self.G = self.Gprv.copy()
+        self.D = self.G.copy()
         self.R = sm.computeNorms(self.G)
         print('Is D0 real?')
         complexGf = self.Gf - sm.conj_sym_proj(self.Gf,range(self.dimN))
@@ -180,34 +213,14 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
                 #S = S.reshape(S.shape[0:self.dimN + 2] + (1,))
             else:
                 raise TypeError('Signal array must have Ndim + 1 or Ndim + 2 dimensions.')
-            #print('Is the signal real?')
-            #complexSf = self.Sf - sm.conj_sym_proj(self.Sf,self.cri.axisN)
-            #print(numpy.amax(numpy.abs(complexSf)))
-
-            #print('What if we realize the signal, haha?')
-            #self.Sf = sm.conj_sym_proj(self.Sf,self.cri.axisN)
-            #complexSf = self.Sf - sm.conj_sym_proj(self.Sf,self.cri.axisN)
-            #print(numpy.amax(numpy.abs(complexSf)))
-
-            #print('Hold on, just a sanity check here... Does our conjegate symmetric projection actually work?')
-            #S2 = sporco.linalg.ifftn(self.Sf,s=self.cri.Nv,axes=self.cri.axisN)
-            #print(numpy.amax(numpy.abs(S - numpy.squeeze(S2))))
 
             # apparently, W isn't supposed to be boolean.
-            xstep = cbpdn_fixed_rho.CBPDN_FactoredFixedRho(Q=self.Q, DR=self.Df.reshape(self.Dfshape),S=S, R=self.R, W=self.W, W1=self.W1, lmbda=lmbda, dimN=self.dimN, opt=self.opt['CBPDN'])
+            #xstep = cbpdn_fixed_rho.CBPDN_FactoredFixedRho(Q=self.Q, DR=self.Df.reshape(self.Dfshape),S=S, R=self.R, W=self.W, W1=self.W1, lmbda=lmbda, dimN=self.dimN, opt=self.opt['CBPDN'])
+            xstep = cbpdn.ConvBPDNMaskDcpl(D=self.D.squeeze(),S=S,lmbda=lmbda,W=self.W,opt=self.opt['CBPDN'],dimK=self.dimK,dimN=self.dimN)
             temp = xstep.solve()
             #import pdb; pdb.set_trace()
             self.Zf = xstep.getcoef()
             self.Zf = self.Zf.reshape(self.cri.shpX)
-            #complexZf = self.Zf - sm.conj_sym_proj(self.Zf,range(self.dimN))
-            #print('Are the coefficients real?')
-            #print(numpy.amax(numpy.abs(complexZf)))
-
-            #print('How large are these coeficients?')
-            #print('frequency:')
-            #print(numpy.amax(numpy.abs(self.Zf)))
-            #print('spatial:')
-            #print(numpy.amax(numpy.abs(sporco.linalg.ifftn(self.Zf,self.cri.Nv, self.cri.axisN))))
             self.xstep_itstat = xstep.itstat[-1] if xstep.itstat else None
             #print('xstep complete.')
 
@@ -296,7 +309,9 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             
         
         self.R = sm.computeNorms(self.Df.reshape(self.Dfshape)/numpy.sqrt(numpy.prod(self.cri.Nv)))
-        #D = sporco.linalg.ifftn(self.Df, self.cri.Nv,self.cri.axisN)
+        D = sporco.linalg.ifftn(self.Df, self.cri.Nv,self.cri.axisN)
+        
+        self.D = D[0:self.dsz[0],0:self.dsz[1]]
         #R = sm.computeNorms(D[0:self.dsz[0],0:self.dsz[1]])
         #tempD = self.getdict()
         #print('Maximum dictionary magnitude:')
@@ -317,8 +332,10 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             rho = (0.0,)
         else:
             # Had to change RegL1 to Reg, because of CBPDN class
+            #objfn = (self.xstep_itstat.ObjFun, self.xstep_itstat.DFid,
+            #         self.xstep_itstat.Reg)
             objfn = (self.xstep_itstat.ObjFun, self.xstep_itstat.DFid,
-                     self.xstep_itstat.Reg)
+                     self.xstep_itstat.RegL1)
             rsdl = (self.xstep_itstat.PrimalRsdl,
                     self.xstep_itstat.DualRsdl)
             rho = (self.xstep_itstat.Rho,)
@@ -338,5 +355,34 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
         return ()
 
+    def solve(self, S, dimK=None):
+        """Compute sparse coding and dictionary update for training
+        data `S`."""
 
+        # Use dimK specified in __init__ as default
+        if dimK is None and self.dimK is not None:
+            dimK = self.dimK
+
+        # Start solve timer
+        self.timer.start(['solve', 'solve_wo_eval'])
+
+        # Solve CSC problem on S and do dictionary step
+        self.init_vars(S, dimK)
+        self.xstep(S, self.lmbda, dimK)
+        self.dstep()
+
+        # Stop solve timer
+        self.timer.stop('solve_wo_eval')
+
+        # Extract and record iteration stats
+        self.manage_itstat()
+
+        # Increment iteration count
+        self.j += 1
+
+        # Stop solve timer
+        self.timer.stop('solve')
+
+        # Return current dictionary
+        return self.getdict()
 

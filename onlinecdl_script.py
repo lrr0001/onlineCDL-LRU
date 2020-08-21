@@ -122,7 +122,13 @@ Set regularization parameter and options for dictionary learning solver.
 """
 
 lmbda = 1e-1
-opt = onlinecdl.OnlineConvBPDNDictLearn.Options({
+#opt = onlinecdl.OnlineConvBPDNDictLearn.Options({
+#                'Verbose': False, 'ZeroMean': False, 'eta_a': 10.0,
+#                'eta_b': 20.0, 'DataType': np.complex128,
+#                'CBPDN': {'Verbose': False, 'rho': rho, 'AutoRho': {'Enabled': False},
+#                    'RelaxParam': 1.0, 'RelStopTol': 1e-7, 'MaxMainIter': 50,
+#                    'FastSolve': False, 'DataType': np.complex128}})
+opt = onlineCDL_lowrankupdates.OnlineConvBPDNDictLearnLRU.Options({
                 'Verbose': False, 'ZeroMean': False, 'eta_a': 10.0,
                 'eta_b': 20.0, 'DataType': np.complex128,
                 'CBPDN': {'Verbose': False, 'rho': rho, 'AutoRho': {'Enabled': False},
