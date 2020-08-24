@@ -112,7 +112,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         self.Gf = self.Df
         temp = sporco.linalg.ifftn(self.Df,[self.Dfshape[ii] for ii in range(0,dimN)],tuple(range(0,dimN)))
         self.Gprv = temp[0:self.dsz[0],0:self.dsz[1]]
-        self.G = self.Gprv
+        self.G = self.Gprv.copy()
         self.R = sm.computeNorms(self.G)
         print('Is D0 real?')
         complexGf = self.Gf - sm.conj_sym_proj(self.Gf,range(self.dimN))
