@@ -41,6 +41,7 @@ end = (522,612)
 filterSz = (8,8)
 noc = 3
 nof = 64
+noepochs = 64
 
 imagenames = ['barbara.png','kodim23.png','monarch.png','sail.png','tulips.png']
 
@@ -123,8 +124,8 @@ Set regularization parameter and options for dictionary learning solver.
 
 lmbda = 1e-1
 opt = onlinecdl.OnlineConvBPDNDictLearn.Options({
-                'Verbose': False, 'ZeroMean': False, 'eta_a': 10.0,
-                'eta_b': 20.0, 'DataType': np.complex128,
+                'Verbose': False, 'ZeroMean': False, 'eta_a': 100.0,
+                'eta_b': 200.0, 'DataType': np.complex128,
                 'CBPDN': {'Verbose': False, 'rho': rho, 'AutoRho': {'Enabled': False},
                     'RelaxParam': 1.0, 'RelStopTol': 1e-7, 'MaxMainIter': 50,
                     'FastSolve': False, 'DataType': np.complex128}})
@@ -155,21 +156,23 @@ d.display_start()
 #    img_index = np.random.randint(0, sh.shape[-1])
 #    print(sh[...,[img_index]].shape)
 #    d.solve(sh[..., [img_index]])
-for imgnum in range(len(S)):
-    for ii in range(0,128,increment[0]):
-        c = ii - filterSz[0] + 1 
-        if c + increment[0] + 2*(filterSz[0] - 1) >= 128:
-            cinds = 127 - abs(np.arange(c - 127,c+increment[0] + 2*(filterSz[0] - 1) - 127))
-        else:
-            cinds = abs(np.arange(c,c+increment[0] + 2*(filterSz[0] - 1)))
-        for jj in range(0,128,increment[1]):
-            r = jj - filterSz[1]
-            if r + increment[1] + 2*(filterSz[1] - 1) >= 128:
-                rinds = 127 - abs(np.arange(r - 127,r+increment[1] + 2*(filterSz[1] - 1) - 127))
+for epoch in range(noepochs):
+    for imgnum in range(len(S)):
+        for ii in range(0,128,increment[0]):
+            c = ii - filterSz[0] + 1 
+            if c + increment[0] + 2*(filterSz[0] - 1) >= 128:
+                cinds = 127 - abs(np.arange(c - 127,c+increment[0] + 2*(filterSz[0] - 1) - 127))
             else:
-                rinds = abs(np.arange(r,r+increment[1] + 2*(filterSz[1] - 1)))       
-            Scurr = Sh[imgnum][np.ix_(cinds,rinds)]
-            temp = d.solve(Scurr)
+                cinds = abs(np.arange(c,c+increment[0] + 2*(filterSz[0] - 1)))
+            for jj in range(0,128,increment[1]):
+                r = jj - filterSz[1]
+                if r + increment[1] + 2*(filterSz[1] - 1) >= 128:
+                    rinds = 127 - abs(np.arange(r - 127,r+increment[1] + 2*(filterSz[1] - 1) - 127))
+                else:
+                    rinds = abs(np.arange(r,r+increment[1] + 2*(filterSz[1] - 1)))       
+                Scurr = Sh[imgnum][np.ix_(cinds,rinds)]
+                temp = d.solve(Scurr)
+
 
 
 
