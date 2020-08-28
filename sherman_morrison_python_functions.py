@@ -6,6 +6,7 @@ import sporco.prox
 import numpy
 import numpy.linalg
 import scipy.linalg
+import sklearn.utils.extmath
 
 class factoredMatrix:
     def update(self,u,v,D):
@@ -273,7 +274,7 @@ def woodburyIpUV2(df,r,c,noc,nof):
     return(ainv)
     
 
-def lowRankApprox(a, projIter=2,axisu=2,axisv=3,dimN=2):
+def lowRankApprox_vold(a, projIter=2,axisu=2,axisv=3,dimN=2):
     r""" This code constructs an approximation of a using a sum of a pair of low-rank terms. (Notably, their sum is not low-rank.)
     a = eps + u1*v1H + u2*v2H
     u1: (1,1,K,1)
@@ -313,6 +314,75 @@ def lowRankApprox(a, projIter=2,axisu=2,axisv=3,dimN=2):
     u2 = sporco.linalg.inner(a,numpy.conj(v2H),axisv)
     u2 = u2 - sporco.linalg.inner(numpy.conj(u1),u2,axisu)*u1
     return ((u1,u2),(v1H,v2H),u1*v1H + u2*v2H)
+
+def lowRankApprox(a, projIter=5, axisu=2,axisv=3,dimN=2):
+    # untested, but should work just fine
+    numelN = a.shape[0:dimN]
+    numelu = a.shape[axisu]
+    numelv = a.shape[axisv]
+    u = []
+    v = []
+
+    a = external2mid_LRA(a,axisu,axisv,dimN)
+    midshape = a.shape
+    print(midshape)
+    x = mid2internal_LRA(a, numelu, numelN)
+    u1,s1,vh1 = sklearn.utils.extmath.randomized_svd(x,n_components=1,n_iter=projIter,random_state=None)
+    vh1 = vh1*s1
+    tempu = internal2mid_u_LRA(u1, dimN, midshape)
+    print(vh1.shape)
+    tempv = internal2mid_v_LRA(vh1, dimN, midshape)
+    approx = tempu*tempv
+    u.append(mid2external_LRA(tempu,axisu,axisv,dimN))
+    v.append(mid2external_LRA(tempv,axisu,axisv,dimN))
+
+    a = a - approx
+    x = mid2internaltp_LRA(a, numelv, numelN)
+    vh2,s2,u2 = sklearn.utils.extmath.randomized_svd(x,n_components=1,n_iter=projIter,random_state=None)
+    u2 = s2*u2
+    tempu = internaltp2mid_u_LRA(u2, dimN, midshape)
+    tempv = internaltp2mid_v_LRA(vh2, dimN, midshape)
+    approx = approx + tempu*tempv
+    u.append(mid2external_LRA(tempu,axisu,axisv,dimN))
+    v.append(mid2external_LRA(tempv,axisu,axisv,dimN))
+    
+    return (u,v,mid2external_LRA(approx,axisu,axisv,dimN))
+
+def external2mid_LRA(a, axisu=2, axisv=3, dimN=2):
+
+    a = numpy.swapaxes(a,axisu, dimN)
+    if axisv == dimN:
+        return numpy.swapaxes(a,axisu,dimN + 1)
+    else:
+        return numpy.swapaxes(a,axisv,dimN + 1)
+
+def mid2external_LRA(x, axisu=2, axisv=3, dimN=2):
+    if axisv == dimN:
+        x = numpy.swapaxes(x,axisu,dimN + 1)
+    else:
+        x = numpy.swapaxes(x,axisv,dimN + 1)
+    return numpy.swapaxes(x,axisu,dimN)
+
+def mid2internal_LRA(x, numelu, numelN):
+    return x.reshape((numpy.prod(numelN)*numelu,-1))
+
+def mid2internaltp_LRA(x, numelv, numelN):
+    x = numpy.swapaxes(x,len(numelN),len(numelN) + 1)
+    return x.reshape((numpy.prod(numelN)*numelv,-1))
+
+def internal2mid_u_LRA(u,dimN,midshape):
+    return u.reshape(midshape[0:dimN + 1] + (1,) + (1,)*len(midshape[dimN + 2:]))
+
+def internal2mid_v_LRA(v,dimN,midshape):
+    return v.reshape((1,)*dimN + (1,) + midshape[dimN + 1:])
+
+def internaltp2mid_u_LRA(u, dimN, midshape):
+    return u.reshape((1,)*dimN + (midshape[dimN],) + (1,) + midshape[dimN + 2:])
+
+def internaltp2mid_v_LRA(v, dimN, midshape):
+    return v.reshape(midshape[0:dimN] + (1,) + (midshape[dimN + 1],) + (1,)*len(midshape[dimN + 2:]))
+
+
 
 
 def mdbi_dict_sm_r1update(ainv, dtu, utu, vt, dimN=2):
