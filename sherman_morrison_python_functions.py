@@ -225,6 +225,19 @@ class factoredMatrix_chol(factoredMatrix_aIpBhB):
                 z[inds] = scipy.linalg.solve_triangular(self.L[inds],y,lower=True,trans=2,overwrite_b=True,check_finite=False)
             return z
 
+def solve_triangular(A,b):
+    # I still need to test this code.
+    # Matrix A must be full rank.
+    A = numpy.swapaxes(A,0,-2)
+    A = numpy.swapaxes(A,1,-1)
+    b = numpy.swapaxes(b,0,-1)
+    N = A.shape[-1]
+    for ii in range(N - 1,-1,-1):
+        for jj in range(N - 1,ii, -1):
+            b[ii] = b[ii] - b[jj]*A[ii,jj]
+        b[ii] = b[ii]/A[ii,ii]
+    return numpy.swapaxes(b,0,-1)
+
 def conj_tp(x):
     return numpy.conj(numpy.swapaxes(x,-2,-1)) 
 
