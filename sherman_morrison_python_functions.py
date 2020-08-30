@@ -196,47 +196,86 @@ class factoredMatrix_chol(factoredMatrix_aIpBhB):
             y = minusDim(y)
             z = numpy.zeros(y.shape,dtype=self.dtype)
 
-            for inds in loop_magic(self.L.shape[0:-2]): # Loop slows things down, but I don't have vectorized triangular solver
-                w = scipy.linalg.solve_triangular(self.L[inds],y[inds],lower=True,check_finite=False)
-                z[inds] = scipy.linalg.solve_triangular(self.L[inds],w,lower=True,trans=2,overwrite_b=True,check_finite=False)
+            w = solve_triangular(self.L,y,lower=true)
+            z = solve_triangular(self.L,w,lower=true,trans=True)
+
+            #for inds in loop_magic(self.L.shape[0:-2]): # Loop slows things down, but I don't have vectorized triangular solver
+            #    w = scipy.linalg.solve_triangular(self.L[inds],y[inds],lower=True,check_finite=False)
+            #    z[inds] = scipy.linalg.solve_triangular(self.L[inds],w,lower=True,trans=2,overwrite_b=True,check_finite=False)
             return (b - (numpy.matmul(conj_tp(D),z.reshape(z.shape + (1,)))).reshape(b.shape))/self.rho
 
 
         else:
-            z = numpy.zeros(b.shape,dtype=self.dtype)
-            for inds in loop_magic(self.L.shape[0:-2]): # Loop slows things down, but I don't have vectorized triangular solver
-                y = scipy.linalg.solve_triangular(self.L[inds],b[inds],lower=True,check_finite=False)
-                z[inds] = scipy.linalg.solve_triangular(self.L[inds],y,lower=True,trans=2,overwrite_b=True,check_finite=False)
+            y = solve_triangular(self.L,b,lower=True)
+            z = solve_triangular(self.L,y,lower=True,trans=True)
+            #z = numpy.zeros(b.shape,dtype=self.dtype)
+            #for inds in loop_magic(self.L.shape[0:-2]): # Loop slows things down, but I don't have vectorized triangular solver
+            #    y = scipy.linalg.solve_triangular(self.L[inds],b[inds],lower=True,check_finite=False)
+            #    z[inds] = scipy.linalg.solve_triangular(self.L[inds],y,lower=True,trans=2,overwrite_b=True,check_finite=False)
             return z
 
     def inv_mat(self,b,D=None):
         if self.flipped:
             assert D is not None
             y = numpy.matmul(D,b)
-            z = numpy.zeros(y.shape,dtype=self.dtype)
-            for inds in loop_magic(self.L.shape[0:-2]):
-                w = scipy.linalg.solve_triangular(self.L[inds],y[inds],lower=True,check_finite=False)
-                z[inds] = scipy.linalg.solve_triangular(self.L[inds],w,lower=True,trans=2,overwrite_b=True,check_finite=False)
+            w = solve_triangular(self.L,y,lower=True)
+            z = solve_triangular(self.L,w,lower=True,trans=True)
+            #z = numpy.zeros(y.shape,dtype=self.dtype)
+            #for inds in loop_magic(self.L.shape[0:-2]):
+            #    w = scipy.linalg.solve_triangular(self.L[inds],y[inds],lower=True,check_finite=False)
+            #    z[inds] = scipy.linalg.solve_triangular(self.L[inds],w,lower=True,trans=2,overwrite_b=True,check_finite=False)
             return (b - numpy.matmul(conj_tp(D),z))/self.rho
         else:
-            z = numpy.zeros(b.shape,dtype=self.dtype)
-            for inds in loop_magic(self.L.shape[0:-2]):
-                y = scipy.linalg.solve_triangular(self.L[inds],b[inds],lower=True,check_finite=False)
-                z[inds] = scipy.linalg.solve_triangular(self.L[inds],y,lower=True,trans=2,overwrite_b=True,check_finite=False)
+            y = solve_triangular(self.L,b,lower=True)
+            z = solve_triangular(self.L,y,lower=True,trans=True)
+            #z = numpy.zeros(b.shape,dtype=self.dtype)
+            #for inds in loop_magic(self.L.shape[0:-2]):
+            #    y = scipy.linalg.solve_triangular(self.L[inds],b[inds],lower=True,check_finite=False)
+            #    z[inds] = scipy.linalg.solve_triangular(self.L[inds],y,lower=True,trans=2,overwrite_b=True,check_finite=False)
             return z
 
-def solve_triangular(A,b):
-    # I still need to test this code.
-    # Matrix A must be full rank.
+def solve_triangular(A,b,lower=True,trans=False):
+    """
+    This function solves the equation Ax = b for x (or A^H x = b if trans=True).
+
+    A is a square, triangular matrix.
+    b is either a vector or a matrix
+
+    """
+    Ashape = A.shape
+    assert(Ashape[-1] == Ashape[-2])
+    N = A.shape[-1]
+    bshape = b.shape
+    if len(bshape) != len(Ashape):
+        b = addDim(b)
+        bshape += (1,)
+    assert(numpy.all( Ashape[0:-2] == bshape[0:-2] or Ashape[0:-2] == numpy.ones(len(bshape[0:-2])) ))
+    
     A = numpy.swapaxes(A,0,-2)
     A = numpy.swapaxes(A,1,-1)
-    b = numpy.swapaxes(b,0,-1)
+    b = numpy.swapaxes(b,1,-1)
+    b = numpy.swapaxes(b,0,-2)
     N = A.shape[-1]
-    for ii in range(N - 1,-1,-1):
-        for jj in range(N - 1,ii, -1):
-            b[ii] = b[ii] - b[jj]*A[ii,jj]
-        b[ii] = b[ii]/A[ii,ii]
-    return numpy.swapaxes(b,0,-1)
+    c = b.copy()
+    if lower^trans:
+        for ii in range(0,N,1):
+            for jj in range(0,ii,1):
+                if trans:
+                    c[ii] = c[ii] - c[jj]*numpy.conj(A[jj,ii])
+                else:
+                    c[ii] = c[ii] - c[jj]*A[ii,jj]
+            c[ii] = c[ii]/A[ii,ii]
+    else:
+        for ii in range(N - 1,-1,-1):
+            for jj in range(N - 1,ii, -1):
+                if trans:
+                    c[ii] = c[ii] - c[jj]*numpy.conj(A[jj,ii])
+                else:
+                    c[ii] = c[ii] - c[jj]*A[ii,jj]
+            c[ii] = c[ii]/A[ii,ii]
+    c = numpy.swapaxes(c,0,-2)
+    c = numpy.swapaxes(c,1,-1)
+    return c
 
 def conj_tp(x):
     return numpy.conj(numpy.swapaxes(x,-2,-1)) 
