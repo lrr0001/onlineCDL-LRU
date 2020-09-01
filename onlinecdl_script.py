@@ -41,7 +41,7 @@ end = (522,612)
 filterSz = (8,8)
 noc = 3
 nof = 64
-noepochs = 64
+noepochs = 1
 
 imagenames = ['barbara.png','kodim23.png','monarch.png','sail.png','tulips.png']
 
@@ -134,13 +134,13 @@ opt = onlinecdl.OnlineConvBPDNDictLearn.Options({
 # need to define W and W1
 W = np.full((increment[0] + 2*(filterSz[0] - 1), increment[1] + 2*(filterSz[1] - 1)), False, dtype='bool')
 W1 = np.full((increment[0] + 2*(filterSz[0] - 1), increment[1] + 2*(filterSz[1] - 1)), False, dtype='bool')
-W[slice(filterSz[0] - 1,filterSz[0] + increment[0] - 1), slice(filterSz[1] - 1,filterSz[1] + increment[1] - 1)] = True
+W[slice(filterSz[0] - 1,2*filterSz[0] + increment[0] - 2), slice(filterSz[1] - 1,2*filterSz[1] + increment[1] - 2)] = True
 W1[slice(filterSz[0] - 1,filterSz[0] + increment[0] - 1), slice(filterSz[1] - 1,filterSz[1] + increment[1] - 1)] = True
 W = W.reshape(W.shape +  3*(1,))
 W1 = W1.reshape(W1.shape + 3*(1,))
 
-W[:] = True
-W1[:] = True
+#W[:] = True
+#W1[:] = True
 
 """
 Create solver object and solve.

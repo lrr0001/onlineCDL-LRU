@@ -236,13 +236,15 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
         # Compute X D - S
         Ryf = sl.inner(self.Zf, self.Gf, axis=self.cri.axisM) - self.Sf
-        #print('Is Ry real?')
-        realRyf = sm.conj_sym_proj(Ryf,range(self.dimN))
-        complexRyf = Ryf - realRyf
-        #print(numpy.amax(numpy.abs(complexRyf)))
-        Ryf = realRyf
+
+
+        # Filter out elements that do not contribute to error.
+        Ry = sl.ifftn(Ryf,self.cri.Nv, self.cri.axisN)
+        Ry = self.W1*Ry
+        Ryf = sl.fftn(Ry, self.cri.Nv, self.cri.axisN)
 
         # Compute gradient
+
         gradf = sl.inner(numpy.conj(self.Zf), Ryf, axis=self.cri.axisK)
         #print('Is grad real?')
         realgradf = sm.conj_sym_proj(gradf,range(self.dimN))

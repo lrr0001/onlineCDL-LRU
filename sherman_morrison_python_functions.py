@@ -196,9 +196,10 @@ class factoredMatrix_chol(factoredMatrix_aIpBhB):
             y = minusDim(y)
             z = numpy.zeros(y.shape,dtype=self.dtype)
 
-            w = solve_triangular(self.L,y,lower=true)
-            z = solve_triangular(self.L,w,lower=true,trans=True)
 
+            w = solve_triangular(self.L,y,lower=True)
+            z = solve_triangular(self.L,w,lower=True,trans=True)
+            z = minusDim(z)
             #for inds in loop_magic(self.L.shape[0:-2]): # Loop slows things down, but I don't have vectorized triangular solver
             #    w = scipy.linalg.solve_triangular(self.L[inds],y[inds],lower=True,check_finite=False)
             #    z[inds] = scipy.linalg.solve_triangular(self.L[inds],w,lower=True,trans=2,overwrite_b=True,check_finite=False)
@@ -212,7 +213,7 @@ class factoredMatrix_chol(factoredMatrix_aIpBhB):
             #for inds in loop_magic(self.L.shape[0:-2]): # Loop slows things down, but I don't have vectorized triangular solver
             #    y = scipy.linalg.solve_triangular(self.L[inds],b[inds],lower=True,check_finite=False)
             #    z[inds] = scipy.linalg.solve_triangular(self.L[inds],y,lower=True,trans=2,overwrite_b=True,check_finite=False)
-            return z
+            return minusDim(z)
 
     def inv_mat(self,b,D=None):
         if self.flipped:
@@ -249,14 +250,21 @@ def solve_triangular(A,b,lower=True,trans=False):
     if len(bshape) != len(Ashape):
         b = addDim(b)
         bshape += (1,)
+    assert(len(bshape) == len(Ashape))
+    assert(bshape[-2] == N)
     assert(numpy.all( Ashape[0:-2] == bshape[0:-2] or Ashape[0:-2] == numpy.ones(len(bshape[0:-2])) ))
     
     A = numpy.swapaxes(A,0,-2)
     A = numpy.swapaxes(A,1,-1)
     b = numpy.swapaxes(b,1,-1)
     b = numpy.swapaxes(b,0,-2)
-    N = A.shape[-1]
+    b = addDim(b)
+    b = numpy.swapaxes(b,1,-1)
+    A = addDim(A)
     c = b.copy()
+
+    # There is a problem here. The second dimension of b needs a corresponding singleton dimension in A.
+
     if lower^trans:
         for ii in range(0,N,1):
             for jj in range(0,ii,1):
@@ -273,8 +281,10 @@ def solve_triangular(A,b,lower=True,trans=False):
                 else:
                     c[ii] = c[ii] - c[jj]*A[ii,jj]
             c[ii] = c[ii]/A[ii,ii]
-    c = numpy.swapaxes(c,0,-2)
     c = numpy.swapaxes(c,1,-1)
+    c = minusDim(c)
+    c = numpy.swapaxes(c,1,-1)
+    c = numpy.swapaxes(c,0,-2)
     return c
 
 def conj_tp(x):
@@ -326,7 +336,7 @@ def woodburyIpUV2(df,r,c,noc,nof):
     return(ainv)
     
 
-def lowRankApprox_vold(a, projIter=2,axisu=2,axisv=3,dimN=2):
+def lowRankApprox(a, projIter=2,axisu=2,axisv=3,dimN=2):
     r""" This code constructs an approximation of a using a sum of a pair of low-rank terms. (Notably, their sum is not low-rank.)
     a = eps + u1*v1H + u2*v2H
     u1: (1,1,K,1)
@@ -367,7 +377,7 @@ def lowRankApprox_vold(a, projIter=2,axisu=2,axisv=3,dimN=2):
     u2 = u2 - sporco.linalg.inner(numpy.conj(u1),u2,axisu)*u1
     return ((u1,u2),(v1H,v2H),u1*v1H + u2*v2H)
 
-def lowRankApprox(a, projIter=5, axisu=2,axisv=3,dimN=2):
+def lowRankApprox_broken(a, projIter=5, axisu=2,axisv=3,dimN=2):
     # untested, but should work just fine
     numelN = a.shape[0:dimN]
     numelu = a.shape[axisu]
@@ -375,21 +385,21 @@ def lowRankApprox(a, projIter=5, axisu=2,axisv=3,dimN=2):
     u = []
     v = []
 
-    a = external2mid_LRA(a,axisu,axisv,dimN)
-    midshape = a.shape
-    print(midshape)
-    x = mid2internal_LRA(a, numelu, numelN)
+    resid = external2mid_LRA(a,axisu,axisv,dimN)
+    midshape = resid.shape
+    #print(midshape)
+    x = mid2internal_LRA(resid, numelu, numelN)
     u1,s1,vh1 = sklearn.utils.extmath.randomized_svd(x,n_components=1,n_iter=projIter,random_state=None)
     vh1 = vh1*s1
     tempu = internal2mid_u_LRA(u1, dimN, midshape)
-    print(vh1.shape)
+    #print(vh1.shape)
     tempv = internal2mid_v_LRA(vh1, dimN, midshape)
     approx = tempu*tempv
     u.append(mid2external_LRA(tempu,axisu,axisv,dimN))
     v.append(mid2external_LRA(tempv,axisu,axisv,dimN))
 
-    a = a - approx
-    x = mid2internaltp_LRA(a, numelv, numelN)
+    resid = resid - approx
+    x = mid2internaltp_LRA(resid, numelv, numelN)
     vh2,s2,u2 = sklearn.utils.extmath.randomized_svd(x,n_components=1,n_iter=projIter,random_state=None)
     u2 = s2*u2
     tempu = internaltp2mid_u_LRA(u2, dimN, midshape)
@@ -402,25 +412,25 @@ def lowRankApprox(a, projIter=5, axisu=2,axisv=3,dimN=2):
 
 def external2mid_LRA(a, axisu=2, axisv=3, dimN=2):
 
-    a = numpy.swapaxes(a,axisu, dimN)
+    x = numpy.swapaxes(a,axisu, dimN)
     if axisv == dimN:
-        return numpy.swapaxes(a,axisu,dimN + 1)
+        return numpy.swapaxes(x,axisu,dimN + 1)
     else:
-        return numpy.swapaxes(a,axisv,dimN + 1)
+        return numpy.swapaxes(x,axisv,dimN + 1)
 
 def mid2external_LRA(x, axisu=2, axisv=3, dimN=2):
     if axisv == dimN:
-        x = numpy.swapaxes(x,axisu,dimN + 1)
+        a = numpy.swapaxes(x,axisu,dimN + 1)
     else:
-        x = numpy.swapaxes(x,axisv,dimN + 1)
-    return numpy.swapaxes(x,axisu,dimN)
+        a = numpy.swapaxes(x,axisv,dimN + 1)
+    return numpy.swapaxes(a,axisu,dimN)
 
 def mid2internal_LRA(x, numelu, numelN):
     return x.reshape((numpy.prod(numelN)*numelu,-1))
 
 def mid2internaltp_LRA(x, numelv, numelN):
-    x = numpy.swapaxes(x,len(numelN),len(numelN) + 1)
-    return x.reshape((numpy.prod(numelN)*numelv,-1))
+    b = numpy.swapaxes(x,len(numelN),len(numelN) + 1)
+    return b.reshape((numpy.prod(numelN)*numelv,-1))
 
 def internal2mid_u_LRA(u,dimN,midshape):
     return u.reshape(midshape[0:dimN + 1] + (1,) + (1,)*len(midshape[dimN + 2:]))
