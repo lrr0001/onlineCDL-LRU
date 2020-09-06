@@ -7,6 +7,7 @@ import sporco.prox
 import sporco.prox
 import numpy as np
 import copy
+import sherman_morrison_python_functions as sm
 
 class CBPDN_FactoredFixedRho(sporco.admm.admm.ADMM):
     class Options(sporco.admm.admm.ADMM.Options):
@@ -84,25 +85,25 @@ class CBPDN_FactoredFixedRho(sporco.admm.admm.ADMM):
     def var_gamma(self):
         return self.block_sep1(self.U)
 
-    def relax_AX(self):
-        """Implement relaxation if option ``RelaxParam`` != 1.0.
-        This code was copied verbatim from ADMM in SPORCO. This is necessary because ADMMEqual overwrites it."""
+    #def relax_AX(self):
+    #    """Implement relaxation if option ``RelaxParam`` != 1.0.
+    #    This code was copied verbatim from ADMM in SPORCO. This is necessary because ADMMEqual overwrites it."""
 
         # We need to keep the non-relaxed version of AX since it is
         # required for computation of primal residual r
-        self.AXnr = self.cnst_A(self.X)
-        if self.rlx == 1.0:
-            # If RelaxParam option is 1.0 there is no relaxation
-            self.AX = self.AXnr
-        else:
-            # Avoid calling cnst_c() more than once in case it is expensive
-            # (e.g. due to allocation of a large block of memory)
-            if not hasattr(self, '_cnst_c'):
-                self._cnst_c = self.cnst_c()
-            # Compute relaxed version of AX
-            alpha = self.rlx
-            self.AX = alpha*self.AXnr - (1 - alpha)*(self.cnst_B(self.Y) -
-                                                     self._cnst_c)
+ #       self.AXnr = self.cnst_A(self.X)
+  #      if self.rlx == 1.0:
+   #         # If RelaxParam option is 1.0 there is no relaxation
+    #        self.AX = self.AXnr
+     #   else:
+      #      # Avoid calling cnst_c() more than once
+       #     # (e.g. due to allocation of a large block of memory)
+        #    if not hasattr(self, '_cnst_c'):
+         #       self._cnst_c = self.cnst_c()
+          #  # Compute relaxed version of AX
+           # alpha = self.rlx
+            #self.AX = alpha*self.AXnr - (1 - alpha)*(self.cnst_B(self.Y) -
+             #                                        self._cnst_c)
 
     def xstep(self):
         r"""Minimise Augmented Lagrangian with respect to :math:`\mathbf{x}`.
@@ -111,7 +112,7 @@ class CBPDN_FactoredFixedRho(sporco.admm.admm.ADMM):
         dhy = sporco.linalg.inner(np.conj(self.DR),self.block_sep0(self.Y),self.cri.axisC)
         zpg = self.rho*self.block_sep1(self.Y) + self.block_sep1(self.U)
         #print((dhypu + zpg).shape)
-        self.X = self.Q.inv_vec(dhy + zpg,self.DR.reshape(self.DR.shape[0:2] + (1,1,) + (self.cri.Cd,self.cri.M,)))
+        self.X = self.Q.inv_vec(dhy + zpg,sm.DfMatRep(self.DR,self.cri.axisC,self.cri.axisM))
 
     def ystep(self):
         r"""Minimise Augmented Lagrangian with respect to :math:`\mathbf{y}`.

@@ -140,7 +140,7 @@ W = W.reshape(W.shape +  3*(1,))
 W1 = W1.reshape(W1.shape + 3*(1,))
 
 W[:] = True
-W1[:] = True
+#W1[:] = True
 
 """
 Create solver object and solve.
