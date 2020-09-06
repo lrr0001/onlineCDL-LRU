@@ -233,14 +233,16 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         """Compute dictionary update for training data of preceding
         :meth:`xstep`.
         """
-
+        print(self.j)
         # Compute X D - S
         Ryf = sl.inner(self.Zf, self.Gf, axis=self.cri.axisM) - self.Sf
 
+        #print('Maximum coefficient magnitude:')
+        #print(numpy.amax(numpy.abs(self.Zf)))
 
         # Filter out elements that do not contribute to error.
         Ry = sl.ifftn(Ryf,self.cri.Nv, self.cri.axisN)
-        Ry = self.W1*Ry
+        Ry = self.W*Ry
         Ryf = sl.fftn(Ry, self.cri.Nv, self.cri.axisN)
 
         # Compute gradient
@@ -251,6 +253,8 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         complexgrad = gradf - realgradf
         #print(numpy.amax(numpy.abs(complexgrad)))
         gradf = realgradf
+        #print('Maximum value gradf:')
+        #print(numpy.amax(numpy.abs(gradf)))
 
         
         # If multiple channel signal, single channel dictionary
@@ -268,8 +272,8 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         newG = self.G - self.eta*gradfr[0:self.cri.dsz[0],0:self.cri.dsz[1]] # assumes dimN = 2
         newG = newG - numpy.mean(newG,axis=self.cri.axisN,keepdims=True)
         self.G = newG/sm.computeNorms(newG)
-        print('Maximum value G magnitude:')
-        print(numpy.amax(numpy.abs(self.G)))
+        #print('Maximum value G magnitude:')
+        #print(numpy.amax(numpy.abs(self.G)))
 
         self.Gf = sl.fftn(self.G, self.cri.Nv,self.cri.axisN)
         #print('Is G real?')
@@ -279,8 +283,33 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         self.Gf = realGf
         #import pdb; pdb.set_trace()
 
-
+        realgfmdf = sm.conj_sym_proj(self.Gf - self.Df,range(self.dimN))
+        complexgfmdf = self.Gf - self.Df - realgfmdf
+        #print('Is G - D real?')
+        #print(numpy.amax(numpy.abs(complexgfmdf)))
+        
         (u,vH,dupdate) = sm.lowRankApprox(a=self.Gf -self.Df,projIter=self.projIter,axisu=self.cri.axisC,axisv=self.cri.axisM,dimN=self.dimN)
+
+        #print('Is dupdate real?')
+        #realdupdate = sm.conj_sym_proj(dupdate,range(self.dimN))
+        #complexdupdate = dupdate - realdupdate
+        #print(numpy.amax(numpy.abs(complexdupdate)))
+
+        #print(u[1].shape)
+        #print('Is u[0] real?')
+        #realu = sm.conj_sym_proj(u[0],range(self.dimN))
+        #complexu = u[0] - realu
+        #print(numpy.amax(numpy.abs(complexdupdate)))
+
+        #print(vH[0].shape)
+        #print('Is vH[1] real?')
+        #realvh = sm.conj_sym_proj(vH[1],range(self.dimN))
+        #complexvh = vH[1] - realvh
+        #print(numpy.amax(numpy.abs(complexvh)))
+
+        print('Low-rank update fractional error:')
+        print(numpy.sqrt(numpy.sum(numpy.conj(dupdate - self.Gf + self.Df)*(dupdate - self.Gf + self.Df)))/numpy.sqrt(numpy.sum(numpy.conj(self.Gf - self.Df)*(self.Gf - self.Df))))
+
         for ii in range(0,2):
             #Dftemp = Df
             #Dftemp = sm.addDim(Dftemp)
@@ -290,20 +319,34 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             #self.Q.update(numpy.swapaxes(u[ii],self.cri.axisC,-1),numpy.conj(numpy.swapaxes(vH[ii],self.cri.axisM,-1)),self.Dftemp)
             self.Df = self.Df + u[ii]*vH[ii]
         
-            #print('Is D real?')
+            print('Is D real?')
             realDf = sm.conj_sym_proj(self.Df,range(self.dimN))
             complexDf = self.Df - realDf
-            #print(numpy.amax(numpy.abs(complexDf)))
+            print(numpy.amax(numpy.abs(complexDf)))
             self.Df = realDf
+            print('Inverse check:')
+            print(self.Q.inv_check_ls(sm.DfMatRep(self.Df,self.cri.axisC,self.cri.axisM)))
             
         
         self.R = sm.computeNorms(self.Df.reshape(self.Dfshape)/numpy.sqrt(numpy.prod(self.cri.Nv)))
+        print('minimum element R:')
+        print(numpy.amin(numpy.abs(self.R)))
+        print('maximum element R:')
+        print(numpy.amax(numpy.abs(self.R)))
         #D = sporco.linalg.ifftn(self.Df, self.cri.Nv,self.cri.axisN)
         #R = sm.computeNorms(D[0:self.dsz[0],0:self.dsz[1]])
         #tempD = self.getdict()
         #print('Maximum dictionary magnitude:')
         #print(numpy.amax(numpy.abs(tempD)))
         #input()
+        #if self.j == 1:
+         #   import pickle
+          #  fid = open('badDictionary.pkl','wb')
+           # pickle.dump(self.Df,fid)
+            #pickle.dump(self.R,fid)
+            #pickle.dump(self.Q,fid)
+            #pickle.dump(self.Gf,fid)
+            #fid.close()
 
     def getdict(self):
         """Get final dictionary."""

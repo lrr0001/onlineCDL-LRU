@@ -18,6 +18,9 @@ class factoredMatrix_aIpBhB(factoredMatrix):
     def sym_update(self,x,sign):
         raise NotImplementedError
 
+    def inv_mat(self,b,D):
+        raise NotImplementedError
+
     def update(self,u,v,D):
 
         lamb1,lamb2,lamb3,x1,x2,x3 = self.get_update_vectors(u,v,D)
@@ -102,6 +105,19 @@ class factoredMatrix_aIpBhB(factoredMatrix):
         x1 = eigvec1/mag1
         x2 = eigvec2/mag2
         return(eigval1,eigval2,eigval3,x1,x2,x3)
+
+    def inv_check_ls(self,D):
+        """ Checks the left-side inverse property of object's mat_inv function.
+
+        """
+        M = D.shape[-2]
+        N = D.shape[-1]
+        matId = numpy.zeros(D.shape[0:-2] + (N,N,))
+        for ii in range(N):
+            s = [slice(0,D.shape[jj]) for jj in range(len(D.shape[0:-2]))] + [slice(ii,ii + 1),slice(ii,ii + 1)]
+            matId[tuple(s)] = 1
+        aIpDhD = self.rho*matId + numpy.matmul(conj_tp(D),D)
+        return numpy.amax(numpy.abs(matId - self.inv_mat(aIpDhD,D)))
 
 class factoredMatrix_qr(factoredMatrix_aIpBhB):
     def __init__(self,D=None,dtype=None,rho=1):
@@ -336,7 +352,7 @@ def woodburyIpUV2(df,r,c,noc,nof):
     return(ainv)
     
 
-def lowRankApprox(a, projIter=2,axisu=2,axisv=3,dimN=2):
+def lowRankApprox_vold(a, projIter=2,axisu=2,axisv=3,dimN=2):
     r""" This code constructs an approximation of a using a sum of a pair of low-rank terms. (Notably, their sum is not low-rank.)
     a = eps + u1*v1H + u2*v2H
     u1: (1,1,K,1)
@@ -377,8 +393,8 @@ def lowRankApprox(a, projIter=2,axisu=2,axisv=3,dimN=2):
     u2 = u2 - sporco.linalg.inner(numpy.conj(u1),u2,axisu)*u1
     return ((u1,u2),(v1H,v2H),u1*v1H + u2*v2H)
 
-def lowRankApprox_broken(a, projIter=5, axisu=2,axisv=3,dimN=2):
-    # untested, but should work just fine
+def lowRankApprox(a, projIter=5, axisu=2,axisv=3,dimN=2):
+    # This function forces the low-rank approximation to have conjugate symmetry (real after frequency transformation).
     numelN = a.shape[0:dimN]
     numelu = a.shape[axisu]
     numelv = a.shape[axisv]
@@ -387,26 +403,41 @@ def lowRankApprox_broken(a, projIter=5, axisu=2,axisv=3,dimN=2):
 
     resid = external2mid_LRA(a,axisu,axisv,dimN)
     midshape = resid.shape
+
+    x = mid2internaltp_LRA(resid, numelv, numelN)
+    vh2,s2,u2 = sklearn.utils.extmath.randomized_svd(x,n_components=1,n_iter=projIter)
+    #import pdb; pdb.set_trace()
+    u2 = s2*u2
+    # These projections are necessary, though I don't understand why. If the input has conjugate symmetry across the N-axes, shouldn't the output as well?
+    tempu = conj_sym_proj(internaltp2mid_u_LRA(u2, dimN, midshape),range(dimN))
+    tempv = conj_sym_proj(internaltp2mid_v_LRA(vh2, dimN, midshape),range(dimN))
+    u.append(mid2external_LRA(tempu,axisu,axisv,dimN))
+    v.append(mid2external_LRA(tempv,axisu,axisv,dimN))
+    approx = tempu*tempv
+    resid = resid - approx
+
     #print(midshape)
     x = mid2internal_LRA(resid, numelu, numelN)
-    u1,s1,vh1 = sklearn.utils.extmath.randomized_svd(x,n_components=1,n_iter=projIter,random_state=None)
-    vh1 = vh1*s1
-    tempu = internal2mid_u_LRA(u1, dimN, midshape)
+    u1,s1,vh1 = sklearn.utils.extmath.randomized_svd(x,n_components=1,n_iter=projIter)
+    vh1 = s1*vh1
+    #tempu = #conj_sym_proj(
+    tempu = internal2mid_u_LRA(u1, dimN, midshape)#,range(dimN))
     #print(vh1.shape)
+    #tempv = #conj_sym_proj(
     tempv = internal2mid_v_LRA(vh1, dimN, midshape)
-    approx = tempu*tempv
-    u.append(mid2external_LRA(tempu,axisu,axisv,dimN))
-    v.append(mid2external_LRA(tempv,axisu,axisv,dimN))
+    #,range(dimN))
 
-    resid = resid - approx
-    x = mid2internaltp_LRA(resid, numelv, numelN)
-    vh2,s2,u2 = sklearn.utils.extmath.randomized_svd(x,n_components=1,n_iter=projIter,random_state=None)
-    u2 = s2*u2
-    tempu = internaltp2mid_u_LRA(u2, dimN, midshape)
-    tempv = internaltp2mid_v_LRA(vh2, dimN, midshape)
-    approx = approx + tempu*tempv
+
     u.append(mid2external_LRA(tempu,axisu,axisv,dimN))
     v.append(mid2external_LRA(tempv,axisu,axisv,dimN))
+    #print('First rank-one component, fractional error:')
+    #print(numpy.sqrt(numpy.sum(numpy.conj(resid - approx)*(resid - approx)))/numpy.sqrt(numpy.sum(numpy.conj(resid)*resid)))
+
+
+    #print('Second rank-one component, subsequent fractional error:')
+    #print(numpy.sqrt(numpy.sum(numpy.conj(resid -tempu*tempv)*(resid -tempu*tempv)))/numpy.sqrt(numpy.sum(numpy.conj(resid)*resid)))
+    approx = approx + tempu*tempv
+
     
     return (u,v,mid2external_LRA(approx,axisu,axisv,dimN))
 
@@ -444,6 +475,21 @@ def internaltp2mid_u_LRA(u, dimN, midshape):
 def internaltp2mid_v_LRA(v, dimN, midshape):
     return v.reshape(midshape[0:dimN] + (1,) + (midshape[dimN + 1],) + (1,)*len(midshape[dimN + 2:]))
 
+def randomized_svd(x,n_components=1,n_oversamples=10,n_iter=4):
+    if x.shape[1] > x.shape[0]:
+        x = numpy.swapaxes(x,0,1)
+    p = numpy.random.randn(x.shape[1],n_components + n_oversamples)
+    z = numpy.matmul(x,p)
+    for ii in range(n_iter):
+        z = numpy.matmul(x,numpy.matmul(numpy.conj(numpy.swapaxes(x,0,1)),z))
+        
+    q,_ = scipy.linalg.qr(z)
+    u_small,s,vh = scipy.linalg.svd(numpy.matmul(numpy.conj(numpy.swapaxes(q,0,1)),x))
+    u = numpy.matmul(q,u_small)
+    if x.shape[1] > x.shape[0]:
+        return (numpy.swapaxes(vh[slice(0,n_components),:],0,1),s[0:n_components],numpy.swapaxes(u[:,slice(0,n_components)],0,1))
+    else:
+        return (u[:,slice(0,n_components)],s[0:n_components],vh[slice(0,n_components),:])
 
 
 
