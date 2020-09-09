@@ -209,7 +209,7 @@ fig2 = plot.plot(np.vstack((its.Cnstr,its.DeltaD)).T, xlbl='Iterations', ylbl='d
 
 fig2.show()
 
-import cbpdn_fixed_rho
+import cbpdn_factoredInv
 import sporco.metric as smet
 from sporco import plot
 Dfnew = d.Df.squeeze()
@@ -227,9 +227,9 @@ for imgnum in range(len(S)):
             else:
                 rinds = abs(np.arange(r,r+increment[1] + 2*(filterSz[1] - 1)))       
             Shcurr = Sh[imgnum][np.ix_(cinds,rinds)]
-            bold = cbpdn_fixed_rho.CBPDN_FactoredFixedRho(Q=Qold,DR=Df,S=Shcurr,R=R,W=W,W1=W1,lmbda=lmbda,dimN=2,opt=opt['CBPDN'])
+            bold = cbpdn_factoredInv.CBPDN_Factored(Q=Qold,DR=Df,S=Shcurr,R=R,W=W,lmbda=lmbda,dimN=2,opt=opt['CBPDN'])
             xold = bold.solve()
-            bnew = cbpdn_fixed_rho.CBPDN_FactoredFixedRho(Q=d.Q,DR=Dfnew,S=Shcurr,R=d.R,W=W,W1=W1,lmbda=lmbda,dimN=2,opt=opt['CBPDN'])
+            bnew = cbpdn_factoredInv.CBPDN_Factored(Q=d.Q,DR=Dfnew,S=Shcurr,R=d.R,W=W,lmbda=lmbda,dimN=2,opt=opt['CBPDN'])
             xnew = bnew.solve()
             shr = bold.reconstruct().squeeze()
             sl = Sl[imgnum][np.ix_(cinds,rinds)]
