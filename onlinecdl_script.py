@@ -95,7 +95,7 @@ D = Dutil/Rutil + 0.5*Drand/Rrand
 R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
 D = D/R
 R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
-rho = 0.5
+rho = 1
 
 Df = np.empty((increment[0] + 2*(filterSz[0] - 1),increment[1] + 2*(filterSz[1] - 1)) + D.shape[2:],dtype=np.complex128)
 

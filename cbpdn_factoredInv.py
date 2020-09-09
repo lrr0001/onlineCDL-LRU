@@ -54,7 +54,7 @@ class CBPDN_Factored(sporco.admm.admm.ADMM):
         self.R = R
         self.W = W
         self.lmbda = lmbda
-        self.Sf = fft(S)
+        self.Sf = self.fft(self.S)
 
         # for testing purposes:
         #self.X = np.zeros(self.cri.Nv + (self.cri.C,self.cri.K,1,))
@@ -120,7 +120,7 @@ class CBPDN_Factored(sporco.admm.admm.ADMM):
         idftAX = self.ifft(self.block_sep0(self.AX))
         Y0S = self.rho/(self.rho + self.W)*(idftAX - self.S + idftU/self.rho)
         idftnAXmU = -self.ifft(self.block_sep1(self.AX) + self.block_sep1(self.U)/self.rho)
-        Y1S = self.W1*sporco.prox.prox_l1(idftnAXmU, self.lmbda*self.R/self.rho)
+        Y1S = sporco.prox.prox_l1(idftnAXmU, self.lmbda*self.R/self.rho)
 
         self.Ys = self.block_cat(Y0S,Y1S)
         self.Y = self.fft(self.Ys)

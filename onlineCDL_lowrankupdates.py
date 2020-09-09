@@ -1,6 +1,7 @@
 import sporco
 import sporco.dictlrn.onlinecdl
-import cbpdn_fixed_rho
+#import cbpdn_fixed_rho
+import cbpdn_factoredInv
 from sporco import util
 from sporco import common
 from sporco.util import u
@@ -194,7 +195,8 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             #print(numpy.amax(numpy.abs(S - numpy.squeeze(S2))))
 
             # apparently, W isn't supposed to be boolean.
-            xstep = cbpdn_fixed_rho.CBPDN_FactoredFixedRho(Q=self.Q, DR=self.Df.reshape(self.Dfshape),S=S, R=self.R, W=self.W, W1=self.W1, lmbda=lmbda, dimN=self.dimN, opt=self.opt['CBPDN'])
+            #xstep = cbpdn_fixed_rho.CBPDN_FactoredFixedRho(Q=self.Q, DR=self.Df.reshape(self.Dfshape),S=S, R=self.R, W=self.W, W1=self.W1, lmbda=lmbda, dimN=self.dimN, opt=self.opt['CBPDN'])
+            xstep = cbpdn_factoredInv.CBPDN_Factored(self.Q, DR=self.Df.reshape(self.Dfshape),S=S,R=self.R,W=self.W,lmbda=lmbda,dimN = self.dimN,opt=self.opt['CBPDN'])
             temp = xstep.solve()
             #import pdb; pdb.set_trace()
             self.Zf = xstep.getcoef()
@@ -248,13 +250,13 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         # Compute gradient
 
         gradf = sl.inner(numpy.conj(self.Zf), Ryf, axis=self.cri.axisK)
-        #print('Is grad real?')
+        print('Is grad real?')
         realgradf = sm.conj_sym_proj(gradf,range(self.dimN))
         complexgrad = gradf - realgradf
-        #print(numpy.amax(numpy.abs(complexgrad)))
+        print(numpy.amax(numpy.abs(complexgrad)))
         gradf = realgradf
-        #print('Maximum value gradf:')
-        #print(numpy.amax(numpy.abs(gradf)))
+        print('Maximum value gradf:')
+        print(numpy.amax(numpy.abs(gradf)))
 
         
         # If multiple channel signal, single channel dictionary
