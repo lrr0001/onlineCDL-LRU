@@ -1,20 +1,20 @@
 import sporco.linalg
-import sporco.admm.admm
-import sporco.admm.cbpdn
-import sporco.cnvrep
-import sporco.prox
 import numpy
 import numpy.linalg
 import scipy.linalg
-import sklearn.utils.extmath
+import sklearn_modified_complex_svd
+
 
 class factoredMatrix:
-    def update(self,u,v,D):
-        raise NotImplementedError
-    def inv(self,b,D=None):
-        raise NotImplementedError
+    """ Currently, I don't see what kind of functions would be necessary for all matrix decompositions, so I'll leave this empty for now.
+    """
+    pass
 
 class factoredMatrix_aIpBhB(factoredMatrix):
+    """
+    This is a class of decompositions for matrices of the form aI + B^H B. Rank-1 B updates can be converted to 3 symmetric rank-1 updates for the decomposition.
+
+    """
     def sym_update(self,x,sign):
         raise NotImplementedError
 
@@ -279,7 +279,6 @@ def solve_triangular(A,b,lower=True,trans=False):
     A = addDim(A)
     c = b.copy()
 
-    # There is a problem here. The second dimension of b needs a corresponding singleton dimension in A.
 
     if lower^trans:
         for ii in range(0,N,1):
@@ -306,51 +305,6 @@ def solve_triangular(A,b,lower=True,trans=False):
 def conj_tp(x):
     return numpy.conj(numpy.swapaxes(x,-2,-1)) 
 
-def woodburyIpUV(df,r,c,noc,nof):
-    '" Computes the inverse of I + df^Hdf using the Woodbury inversion lemma "'
-
-    # need identity matrix for small dimensions (r x c x C x C)
-    idmat = numpy.zeros((r,c,noc,noc))
-    for mm in range(noc):
-        idmat[:,:,slice(mm,mm+1),slice(mm,mm+1)] = 1
-
-    # need identity matrix for large dimensions (r x c x 1 x 1 x M x M)
-    idmat2 = numpy.zeros((r,c,1,1,nof,nof))
-    for mm in range(nof):
-        idmat2[:,:,:,:,slice(mm,mm+1),slice(mm,mm+1)] = 1
-
-    # compute (I + dfdf^H)^{-1}
-    dt = numpy.conj(df.reshape((r,c,1,noc,nof)))
-    d = df.reshape((r,c,noc,1,nof))
-    ddt = sporco.linalg.inner(d,dt,axis=4)
-    b = idmat + ddt.reshape((r,c,noc,noc))
-    binv = numpy.linalg.inv(b)
-
-    # expand for computation of a inverse
-    binv = binv.reshape((r,c,noc,noc,1,1))
-
-   # ainv = I - df^H binv df
-    dt = dt.reshape((r,c,noc,1,nof,1))
-    d = d.reshape((r,c,1,noc,1,nof))
-    ainv = idmat2 - sporco.linalg.inner(dt,sporco.linalg.inner(binv,d,axis=3),axis=2)
-    return ainv
-
-def woodburyIpUV2(df,r,c,noc,nof):
-    idmat = numpy.zeros((r,c,noc,noc))
-    for mm in range(noc):
-        idmat[:,:,slice(mm,mm+1),slice(mm,mm+1)] = 1
-    idmat2 = numpy.zeros((r,c,nof,nof))
-    for mm in range(nof):
-        idmat2[:,:,slice(mm,mm+1),slice(mm,mm+1)] = 1
-    dt = numpy.conj(numpy.swapaxes(df,2,3))
-    b = idmat + numpy.matmul(df,dt)
-    binv = numpy.linalg.inv(b)
-
-    ainv = idmat2 - numpy.matmul(dt,numpy.matmul(binv,df))
-    ainv = 1/2*(ainv + numpy.conj(numpy.swapaxes(ainv,2,3)))
-    #return ainv.reshape((r,c,1,1,nof,nof))
-    return(ainv)
-    
 
 def lowRankApprox_vold(a, projIter=2,axisu=2,axisv=3,dimN=2):
     r""" This code constructs an approximation of a using a sum of a pair of low-rank terms. (Notably, their sum is not low-rank.)
@@ -393,6 +347,10 @@ def lowRankApprox_vold(a, projIter=2,axisu=2,axisv=3,dimN=2):
     u2 = u2 - sporco.linalg.inner(numpy.conj(u1),u2,axisu)*u1
     return ((u1,u2),(v1H,v2H),u1*v1H + u2*v2H)
 
+
+
+
+
 def lowRankApprox(a, projIter=5, axisu=2,axisv=3,dimN=2):
     # This function forces the low-rank approximation to have conjugate symmetry (real after frequency transformation).
     numelN = a.shape[0:dimN]
@@ -405,7 +363,8 @@ def lowRankApprox(a, projIter=5, axisu=2,axisv=3,dimN=2):
     midshape = resid.shape
 
     x = mid2internaltp_LRA(resid, numelv, numelN)
-    vh2,s2,u2 = sklearn.utils.extmath.randomized_svd(x,n_components=1,n_iter=projIter)
+    import pdb; pdb.set_trace()
+    vh2,s2,u2 = sklearn_modified_complex_svd.randomized_svd(x,n_components=1,n_iter=projIter)
     #import pdb; pdb.set_trace()
     u2 = s2*u2
     # These projections are necessary, though I don't understand why. If the input has conjugate symmetry across the N-axes, shouldn't the output as well?
@@ -418,7 +377,7 @@ def lowRankApprox(a, projIter=5, axisu=2,axisv=3,dimN=2):
 
     #print(midshape)
     x = mid2internal_LRA(resid, numelu, numelN)
-    u1,s1,vh1 = sklearn.utils.extmath.randomized_svd(x,n_components=1,n_iter=projIter)
+    u1,s1,vh1 = sklearn_modified_complex_svd.randomized_svd(x,n_components=1,n_iter=projIter)
     vh1 = s1*vh1
     #tempu = #conj_sym_proj(
     tempu = internal2mid_u_LRA(u1, dimN, midshape)#,range(dimN))
@@ -475,6 +434,12 @@ def internaltp2mid_u_LRA(u, dimN, midshape):
 def internaltp2mid_v_LRA(v, dimN, midshape):
     return v.reshape(midshape[0:dimN] + (1,) + (midshape[dimN + 1],) + (1,)*len(midshape[dimN + 2:]))
 
+
+
+
+
+
+
 def randomized_svd(x,n_components=1,n_oversamples=10,n_iter=4):
     if x.shape[1] > x.shape[0]:
         x = numpy.swapaxes(x,0,1)
@@ -490,120 +455,6 @@ def randomized_svd(x,n_components=1,n_oversamples=10,n_iter=4):
         return (numpy.swapaxes(vh[slice(0,n_components),:],0,1),s[0:n_components],numpy.swapaxes(u[:,slice(0,n_components)],0,1))
     else:
         return (u[:,slice(0,n_components)],s[0:n_components],vh[slice(0,n_components),:])
-
-
-
-def mdbi_dict_sm_r1update(ainv, dtu, utu, vt, dimN=2):
-    r"""
-    Compute the updated a multiple diagonal block inverse after
-    a rank-one update for each block using the Sherman-Morrison
-    equation. The computation yields an :math:`O(M^2)` time cost and
-    :math:`O(M^2)` memory cost, where :math:`M` is the dimension of
-    the axis over which inner products are taken.
-
-
-    Parameters
-    ----------
-    ainv : array_like
-      Current value of :math:`\mathbf{A}^{-1}`
-    u : array_like
-      Vertical factor for rank-one update :math:`\mathbf{u}`
-    vt : array_like
-      Horizontal factor for rank-one update :math:`\mathbf{v}^H`
-    dimN : int, optional (default 2)
-      Number of spatial dimensions arranged as leading axes in input array.
-      Axis M is taken to be at dimN+2.
-
-    Returns
-    -------
-    ainv : array_like
-      Current value of :math:`\mathbf{A}^{-1}`
-    """
-
-    ainv = mdbi_sm_r1update(ainv, numpy.swapaxes(dtu,dimN + 2,dimN + 3), vt, dimN)
-    ainv = mdbi_sm_r1update(ainv, numpy.swapaxes(numpy.conj(vt),dimN + 2,dimN + 3), numpy.conj(dtu), dimN)
-    ainv = mdbi_sm_r1update(ainv, numpy.swapaxes(numpy.conj(vt),dimN + 3, dimN + 3), utu*vt, dimN)
-    
-
-    return ainv
-
-def mdbi_sm_r1update(ainv, u, vt, dimN=2):
-    r"""
-    Compute the updated a multiple diagonal block inverse after
-    a rank-one update for each block using the Sherman-Morrison
-    equation. The computation yields an :math:`O(M^2)` time cost and
-    :math:`O(M^2)` memory cost, where :math:`M` is the dimension of
-    the axis over which inner products are taken.
-
-
-    Parameters
-    ----------
-    ainv : array_like
-      Current value of :math:`\mathbf{A}^{-1}`
-    u : array_like
-      Vertical factor for rank-one update :math:`\mathbf{u}`
-    vt : array_like
-      Horizontal factor for rank-one update :math:`\mathbf{v}^H`
-    dimN : int, optional (default 2)
-      Number of spatial dimensions arranged as leading axes in input array.
-      Axis M is taken to be at dimN+2.
-
-    Returns
-    -------
-    ainv : array_like
-      Current value of :math:`\mathbf{A}^{-1}`
-    """
-
-    # Counterintuitively,
-    # u shape (N1, N2, 1, 1, 1, M)
-    # vt shape (N1, N2, 1, 1, M, 1)
-    # The inputs are counter-intuitive, but I have verified that the function works as expected.
-
-    aiu = sporco.linalg.inner(ainv, u, axis=dimN + 3)
-    vtAiu = 1.0 + sporco.linalg.inner(vt, aiu, axis=dimN + 2)
-    vtAi = sporco.linalg.inner(vt, ainv, axis=dimN + 2)
-    aiuvtai = aiu * vtAi
-    ainv = ainv - aiuvtai / vtAiu
-
-    return ainv
-
-def mdbi_sm_update(ainv, u, vt, axisK, adimN=2):
-    r"""
-    Compute the updated a multiple diagonal block inverse after
-    a rank-one update for each block using the Sherman-Morrison
-    equation. The computation yields an :math:`O(M^2K)` time cost and
-    :math:`O(M^2)` memory cost, where :math:`M` is the dimension of
-    the axis over which inner products are taken.
-
-
-    Parameters
-    ----------
-    ainv : array_like
-      Current value of :math:`\mathbf{A}^{-1}`
-    u : array_like
-      Vertical factor for rank-one update :math:`\mathbf{u}`
-    vt : array_like
-      Horizontal factor for rank-one update :math:`\mathbf{v}^H`
-    dimN : int, optional (default 2)
-      Number of spatial dimensions arranged as leading axes in input array.
-      Axis M is taken to be at dimN+2.
-
-    Returns
-    -------
-    ainv : array_like
-      Current value of :math:`\mathbf{A}^{-1}`
-    """
-    slcnc = (slice(None),) * axisK
-    K = u.shape[axisK]
-    for k in range(0, K):
-        slck = slcnc + (slice(k, k + 1),) + (slice(None), numpy.newaxis,)
-        aiu = sporco.linalg.inner(ainv, u[slck], axis=dimN + 3)
-        vtAiu = 1.0 + sporco.linalg.inner(vt[slck], aiu, axis=dimN + 2)
-        vtAi = sporco.linalg.inner(vt[slck], ainv, axis=dimN + 2)
-        aiuvtai = aiu * vtAi
-        ainv = ainv - aiuvtAi / vtAiu
-
-    return ainv
 
 def computeNorms(v,dimN=2):
     axisN = tuple(range(0,dimN)) + (dimN,)
@@ -656,29 +507,6 @@ def eig2by2(a,b,c,d):
     eigvec1 = numpy.conj(numpy.concatenate((-b_broadcast,-amdo2-radicandsqrt),axis=-1))
     eigvec2 = numpy.conj(numpy.concatenate((-b_broadcast,-amdo2+radicandsqrt),axis=-1))
     return (eigval1,eigval2,eigvec1,eigvec2)
-
-def eigdecomp_test(eigval1,eigval2,eigvec1,eigvec2):
-    V = numpy.concatenate((eigvec1.reshape(eigvec1.shape + (1,)),eigvec2.reshape(eigvec2.shape + (1,))),axis=-1)
-    mag = numpy.sqrt(numpy.sum(numpy.conj(V)*V,axis=-2,keepdims=True))
-    mag[numpy.abs(mag) < 1e-10] = 1e10
-    V = V/mag
-    Vinv = numpy.linalg.inv(V) # Note the small matrix is not hermitian, so this is necessary.
-    eigval1zp = numpy.concatenate((eigval1,numpy.zeros(eigval1.shape)),axis=-1)
-    eigval2zp = numpy.concatenate((numpy.zeros(eigval2.shape),eigval2),axis=-1)
-    Diag = numpy.concatenate((eigval1zp.reshape(eigval1zp.shape + (1,)),eigval2zp.reshape(eigval2zp.shape + (1,))),-1)
-    return numpy.matmul(V,numpy.matmul(Diag,Vinv))
-
-def sym_eigdecomp_test(eigval1,eigval2,eigvec1,eigvec2):
-    V = numpy.concatenate((eigvec1.reshape(eigvec1.shape + (1,)),eigvec2.reshape(eigvec2.shape + (1,))),axis=-1)
-    mag = numpy.sum(numpy.conj(V)*V,axis=-2,keepdims=True)
-    mag[numpy.abs(mag) < 1e-10] = 1e10
-    V = V/mag
-    Vinv = conj_tp(V)
-    eigval1zp = numpy.concatenate((eigval1,numpy.zeros(eigval1.shape)),axis=-1)
-    eigval2zp = numpy.concatenate((numpy.zeros(eigval2.shape),eigval2),axis=-1)
-    Diag = numpy.concatenate((eigval1zp.reshape(eigval1zp.shape + (1,)),eigval2zp.reshape(eigval2zp.shape + (1,))),-1)
-    return numpy.matmul(V,numpy.matmul(Diag,Vinv))
-
 
 def cholesky_rank1_update_inplace(L,x):
     r"""
