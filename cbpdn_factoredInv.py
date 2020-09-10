@@ -43,7 +43,8 @@ class CBPDN_Factored(sporco.admm.admm.ADMM):
     def __init__(self,Q,DR,S,R,W,lmbda,dimN=2,opt=None):
         dimK = None
         self.cri = sporco.cnvrep.CSC_ConvRepIndexing(DR, S, dimK=dimK, dimN=dimN)
-
+        print('shape of X:')
+        print(self.cri.shpX)
         Nx = np.prod(self.cri.shpX)
         yshape = self.cri.Nv + (1,) + (self.cri.K,) + (self.cri.M + self.cri.C,)
         ushape = yshape
@@ -108,7 +109,13 @@ class CBPDN_Factored(sporco.admm.admm.ADMM):
         dhy = sporco.linalg.inner(np.conj(self.DR),self.block_sep0(self.Y) - self.Sf + self.block_sep0(self.U)/self.rho,self.cri.axisC)
         zpg = self.block_sep1(self.Y) + self.block_sep1(self.U)/self.rho
         #print((dhypu + zpg).shape)
-        self.X = self.Q.inv_vec(zpg - dhy,sm.DfMatRep(self.DR,self.cri.axisC,self.cri.axisM))
+        #self.X = self.Q.inv_vec(zpg - dhy,sm.DfMatRep(self.DR,self.cri.axisC,self.cri.axisM))
+        #print(sm.DfMatRep(self.DR,self.cri.axisC,self.cri.axisM).shape)
+        #print(self.Y.shape)
+        #print(self.U.shape)
+        #print(self.cnst_c().shape)
+        #print(self.cnst_AT(self.cnst_B(self.Y) + self.U/self.rho - self.cnst_c()).shape)
+        self.X = self.Q.inv_vec(-self.cnst_AT(self.cnst_B(self.Y) + self.U/self.rho - self.cnst_c()),sm.DfMatRep(self.DR,self.cri.axisC,self.cri.axisM))
 
     def ystep(self):
         r"""Minimise Augmented Lagrangian with respect to :math:`\mathbf{y}`.
@@ -118,7 +125,7 @@ class CBPDN_Factored(sporco.admm.admm.ADMM):
         #idftDX = self.ifft(sporco.linalg.inner(self.DR,self.X,self.cri.axisM))
         idftU = self.ifft(self.block_sep0(self.U))
         idftAX = self.ifft(self.block_sep0(self.AX))
-        Y0S = self.rho/(self.rho + self.W)*(idftAX - self.S + idftU/self.rho)
+        Y0S = -self.rho/(self.rho + self.W)*(idftAX - self.S + idftU/self.rho)
         idftnAXmU = -self.ifft(self.block_sep1(self.AX) + self.block_sep1(self.U)/self.rho)
         Y1S = sporco.prox.prox_l1(idftnAXmU, self.lmbda*self.R/self.rho)
 
@@ -136,13 +143,13 @@ class CBPDN_Factored(sporco.admm.admm.ADMM):
         return self.block_cat(sporco.linalg.inner(self.DR,X,self.cri.axisM),-X)
 
     def cnst_AT(self,X):
-        return sporco.linalg.inner(self.DR,self.block_sep0(X),self.cri.axisM) - self.block_sep1(X)
+        return sporco.linalg.inner(np.conj(self.DR),self.block_sep0(X),self.cri.axisC) - self.block_sep1(X)
 
     def cnst_B(self,X):
         return X
 
     def cnst_c(self):
-        return self.block_cat(-self.Sf,np.zeros(self.X.shape))
+        return self.block_cat(self.Sf,np.zeros(self.cri.shpX))
 
     def reconstruct(self):
         return self.ifft(sporco.linalg.inner(self.DR, self.X, axis=self.cri.axisM)) if self.opt['ReturnX'] else \
