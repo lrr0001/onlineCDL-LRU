@@ -39,7 +39,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
 
 
-    def __init__(self, Q, Df0, W, W1, dsz=None, lmbda=None, projIter=5, opt=None, dimK=None, dimN=2):
+    def __init__(self, Q, Df0, W, W1, dsz=None, lmbda=None, projIter=5, n_components=2, opt=None, dimK=None, dimN=2):
         """
         Parameters
         ----------
@@ -77,7 +77,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         self.projIter = projIter
         self.dimK = dimK
         self.dimN = dimN
-
+        self.n_components=n_components
         # DataType option overrides data type inferred from __init__
         # parameters of derived class
         self.set_dtype(opt, Df0.dtype)
@@ -114,6 +114,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         temp = sporco.linalg.ifftn(self.Df,[self.Dfshape[ii] for ii in range(0,dimN)],tuple(range(0,dimN)))
         self.Gprv = temp[0:self.dsz[0],0:self.dsz[1]]
         self.G = self.Gprv.copy()
+        self.D = self.G.copy()
         self.R = sm.computeNorms(self.G)
         print('Is D0 real?')
         complexGf = self.Gf - sm.conj_sym_proj(self.Gf,range(self.dimN))
@@ -276,21 +277,22 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         self.G = newG/sm.computeNorms(newG)
         #print('Maximum value G magnitude:')
         #print(numpy.amax(numpy.abs(self.G)))
-
-        self.Gf = sl.fftn(self.G, self.cri.Nv,self.cri.axisN)
+        (u,vh,dupdate) = sm.lowRankApprox_stackFilters(a=self.G - self.D, projIter=self.projIter, n_components=self.n_components, axisu=self.cri.axisC, axisv=self.cri.axisM, dimN=self.dimN)
+        self.D += dupdate
+        #self.Gf = sl.fftn(self.G, self.cri.Nv,self.cri.axisN)
         #print('Is G real?')
-        realGf = sm.conj_sym_proj(self.Gf,range(self.dimN))
-        complexGf = self.Gf - realGf
+        #realGf = sm.conj_sym_proj(self.Gf,range(self.dimN))
+        #complexGf = self.Gf - realGf
         #print(numpy.amax(numpy.abs(complexGf)))
-        self.Gf = realGf
+        #self.Gf = realGf
         #import pdb; pdb.set_trace()
 
-        realgfmdf = sm.conj_sym_proj(self.Gf - self.Df,range(self.dimN))
-        complexgfmdf = self.Gf - self.Df - realgfmdf
+        #realgfmdf = sm.conj_sym_proj(self.Gf - self.Df,range(self.dimN))
+        #complexgfmdf = self.Gf - self.Df - realgfmdf
         #print('Is G - D real?')
         #print(numpy.amax(numpy.abs(complexgfmdf)))
         
-        (u,vH,dupdate) = sm.lowRankApprox(a=self.Gf -self.Df,projIter=self.projIter,axisu=self.cri.axisC,axisv=self.cri.axisM,dimN=self.dimN)
+        #(u,vH,dupdate) = sm.lowRankApprox(a=self.Gf -self.Df,projIter=self.projIter,axisu=self.cri.axisC,axisv=self.cri.axisM,dimN=self.dimN)
 
         #print('Is dupdate real?')
         #realdupdate = sm.conj_sym_proj(dupdate,range(self.dimN))
@@ -309,17 +311,19 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         #complexvh = vH[1] - realvh
         #print(numpy.amax(numpy.abs(complexvh)))
 
-        print('Low-rank update fractional error:')
-        print(numpy.sqrt(numpy.sum(numpy.conj(dupdate - self.Gf + self.Df)*(dupdate - self.Gf + self.Df)))/numpy.sqrt(numpy.sum(numpy.conj(self.Gf - self.Df)*(self.Gf - self.Df))))
+        #print('Low-rank update fractional error:')
+        #print(numpy.sqrt(numpy.sum(numpy.conj(dupdate - self.Gf + self.Df)*(dupdate - self.Gf + self.Df)))/numpy.sqrt(numpy.sum(numpy.conj(self.Gf - self.Df)*(self.Gf - self.Df))))
 
-        for ii in range(0,2):
+        for ii in range(0,self.n_components):
             #Dftemp = Df
             #Dftemp = sm.addDim(Dftemp)
             #dftemp = numpy.swapaxes(Dftemp,self.cri.axisM,-1)
             #dftemp = numpy.swapaxes(Dftemp,self.cri.axisC,-2)
-            self.Q.update(sm.uMatRep(u[ii],self.cri.axisC,self.cri.axisM),sm.vMatRep(vH[ii],self.cri.axisC,self.cri.axisM),sm.DfMatRep(self.Df,self.cri.axisC,self.cri.axisM))
+            uii = sl.fftn(u[ii], self.cri.Nv,self.cri.axisN)
+            vhii = sl.fftn(vh[ii],self.cri.Nv,self.cri.axisN)
+            self.Q.update(sm.uMatRep(uii,self.cri.axisC,self.cri.axisM),sm.vMatRep(vHii,self.cri.axisC,self.cri.axisM),sm.DfMatRep(self.Df,self.cri.axisC,self.cri.axisM))
             #self.Q.update(numpy.swapaxes(u[ii],self.cri.axisC,-1),numpy.conj(numpy.swapaxes(vH[ii],self.cri.axisM,-1)),self.Dftemp)
-            self.Df = self.Df + u[ii]*vH[ii]
+            self.Df = self.Df + uii*vHii
         
             print('Is D real?')
             realDf = sm.conj_sym_proj(self.Df,range(self.dimN))

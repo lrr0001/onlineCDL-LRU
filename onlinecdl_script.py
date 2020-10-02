@@ -24,7 +24,7 @@ import sporco.dictlrn.onlinecdl as onlinecdl
 import sporco.linalg
 from sporco import util
 from sporco import plot
-import sherman_morrison_python_functions
+import sherman_morrison_python_functions as sm
 
 """
 Load training images.
@@ -42,6 +42,7 @@ filterSz = (8,8)
 noc = 3
 nof = 64
 noepochs = 1
+mu = [1.0,1.0]
 
 imagenames = ['barbara.png','kodim23.png','monarch.png','sail.png','tulips.png']
 
@@ -89,21 +90,26 @@ np.random.seed(12345)
 #R = sherman_morrison_python_functions.computeNorms(Df,dimN=2)
 Dutil = util.convdicts()['RGB:8x8x3x64']
 Drand = np.random.randn(8,8,3,64)
-Rutil = sherman_morrison_python_functions.computeNorms(v=Dutil,dimN=2)
-Rrand = sherman_morrison_python_functions.computeNorms(v=Drand,dimN=2)
+Rutil = sm.computeNorms(v=Dutil,dimN=2)
+Rrand = sm.computeNorms(v=Drand,dimN=2)
 D = Dutil/Rutil + 0.5*Drand/Rrand
-R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
+R = sm.computeNorms(v=D,dimN=2)
 D = D/R
-R = sherman_morrison_python_functions.computeNorms(v=D,dimN=2)
+R = sm.computeNorms(v=D,dimN=2)
 rho = 1
 
 Df = np.empty((increment[0] + 2*(filterSz[0] - 1),increment[1] + 2*(filterSz[1] - 1)) + D.shape[2:],dtype=np.complex128)
 
 Df = sporco.linalg.fftn(D,(increment[0] + 2*(filterSz[0] - 1),increment[1] + 2*(filterSz[1] - 1)),(0,1))
-Df = (Df + sherman_morrison_python_functions.conj_sym_proj(Df,range(2)))/2
+Df = (Df + sm.conj_sym_proj(Df,range(2)))/2
 [a,b,noc,nof]= Df.shape
-Q = sherman_morrison_python_functions.factoredMatrix_chol(Df.reshape((a,b,1,1,noc,nof)),rho=rho)
-Qold = sherman_morrison_python_functions.factoredMatrix_chol(Df.reshape((a,b,1,1,noc,nof)),rho=rho)
+slice0 = sm.highFreqSlice(a)
+slice1 = sm.highFreqSlice(b)
+print(slice0)
+print(slice1)
+Q = sm.factoredMatrix_cloneSlices(D = Df.reshape((a,b,1,1,noc,nof)),dtype=np.complex128,rho=rho,dimN=2,clonedSlices =[slice0,slice1,],clonedRhos=[mu[ii]/rho + rho for ii in range(len(mu))])
+#Q = sherman_morrison_python_functions.factoredMatrix_chol(Df.reshape((a,b,1,1,noc,nof)),rho=rho)
+Qold = sm.factoredMatrix_chol(Df.reshape((a,b,1,1,noc,nof)),rho=rho)
 
 #idmat = np.zeros((78,78,1,1,nof,nof))
 #for mm in range(nof):
@@ -148,7 +154,7 @@ Create solver object and solve.
 d = onlineCDL_lowrankupdates.OnlineConvBPDNDictLearnLRU(Q=Q, Df0=Df,W=W,W1=W1,dsz=filterSz + (noc,) + (nof,),lmbda=lmbda,projIter=5, opt=opt)
 
 print('Is D real?')
-print(np.amax(np.abs(Df - (Df + sherman_morrison_python_functions.conj_sym_proj(Df,range(2)))/2)))
+print(np.amax(np.abs(Df - (Df + sm.conj_sym_proj(Df,range(2)))/2)))
 
 iter = 50
 d.display_start()
@@ -205,7 +211,8 @@ plot.plot(np.vstack((its.DeltaD, its.Eta)).T, xlbl='Iterations',
           lgnd=('Delta D', 'Eta'), fig=fig)
 fig.show()
 
-fig2 = plot.plot(np.vstack((its.Cnstr,its.DeltaD)).T, xlbl='Iterations', ylbl='difference',lgnd=['approx','delta'])
+fig2 = plot.figure(figsize=(7,7))
+plot.plot(np.vstack((its.Cnstr,its.DeltaD)).T, xlbl='Iterations', ylbl='difference',lgnd=['approx','delta'],fig=fig2)
 
 fig2.show()
 
@@ -229,7 +236,7 @@ for imgnum in range(len(S)):
             Shcurr = Sh[imgnum][np.ix_(cinds,rinds)]
             bold = cbpdn_factoredInv.CBPDN_Factored(Q=Qold,DR=Df,S=Shcurr,R=R,W=W,lmbda=lmbda,dimN=2,opt=opt['CBPDN'])
             xold = bold.solve()
-            bnew = cbpdn_factoredInv.CBPDN_Factored(Q=d.Q,DR=Dfnew,S=Shcurr,R=d.R,W=W,lmbda=lmbda,dimN=2,opt=opt['CBPDN'])
+            bnew = cbpdn_factoredInv.CBPDN_L1DF(Q=d.Q,DR=Dfnew,S=Shcurr,R=d.R,W=W,lmbda=lmbda,mu=mu,dimN=2,opt=opt['CBPDN'])
             xnew = bnew.solve()
             shr = bold.reconstruct().squeeze()
             sl = Sl[imgnum][np.ix_(cinds,rinds)]

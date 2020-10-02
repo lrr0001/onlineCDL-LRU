@@ -43,8 +43,6 @@ class CBPDN_Factored(sporco.admm.admm.ADMM):
     def __init__(self,Q,DR,S,R,W,lmbda,dimN=2,opt=None):
         dimK = None
         self.cri = sporco.cnvrep.CSC_ConvRepIndexing(DR, S, dimK=dimK, dimN=dimN)
-        print('shape of X:')
-        print(self.cri.shpX)
         Nx = np.prod(self.cri.shpX)
         yshape = self.cri.Nv + (1,) + (self.cri.K,) + (self.cri.M + self.cri.C,)
         ushape = yshape
@@ -221,4 +219,61 @@ class CBPDN_Factored(sporco.admm.admm.ADMM):
 
 #    def ydx_constraint(self,DX):
 #        return self.rho/2*(np.linalg.norm(self.block_sep0(self.Y) - DX + self.block_sep0(self.U)/self.rho)/np.sqrt(np.prod(self.cri.Nv)))**2
+
+class CBPDN_L1DF(CBPDN_Factored):
+    def __init__(self,Q,DR,S,R,W,lmbda,mu,dimN=2,opt=None):
+        dimK = None
+        self.cri = sporco.cnvrep.CSC_ConvRepIndexing(DR, S, dimK=dimK, dimN=dimN)
+        Nx = np.prod(self.cri.shpX)
+        yshape = self.cri.Nv + (1,) + (self.cri.K,) + (self.cri.M + self.cri.C,)
+        ushape = yshape
+        self.DR = np.asarray(DR.reshape(self.cri.shpD))
+        self.S = np.asarray(S.reshape(self.cri.shpS))
+        super(CBPDN_Factored, self).__init__(Nx, yshape, ushape, DR.dtype, opt)
+        self.Q = Q
+        self.R = R
+        self.W = W
+        self.lmbda = lmbda
+        self.mu = mu
+        self.Sf = self.fft(self.S)
+
+    def xstep(self):
+        r"""Minimise Augmented Lagrangian with respect to :math:`\mathbf{x}`.
+        """
+        dhy = sporco.linalg.inner(np.conj(self.DR),self.block_sep0(self.Y) - self.Sf + self.block_sep0(self.U)/self.rho,self.cri.axisC)
+        zpg = self.block_sep1(self.Y) + self.block_sep1(self.U)/self.rho
+        #print((dhypu + zpg).shape)
+        #self.X = self.Q.inv_vec(zpg - dhy,sm.DfMatRep(self.DR,self.cri.axisC,self.cri.axisM))
+        #print(sm.DfMatRep(self.DR,self.cri.axisC,self.cri.axisM).shape)
+        #print(self.Y.shape)
+        #print(self.U.shape)
+        #print(self.cnst_c().shape)
+        #print(self.cnst_AT(self.cnst_B(self.Y) + self.U/self.rho - self.cnst_c()).shape)
+        self.X = self.Q.inv_vec_duplc(-self.cnst_AT(self.cnst_B(self.Y) + self.U/self.rho - self.cnst_c()),sm.DfMatRep(self.DR,self.cri.axisC,self.cri.axisM))
+    def ystep(self):
+        idftU = self.ifft(self.block_sep0(self.U))
+        idftAX = self.ifft(self.block_sep0(self.AX))
+        Y0S = sporco.prox.prox_l1(self.S - idftAX -  idftU/self.rho,self.W/self.rho)
+        idftnAXmU = -self.ifft(self.block_sep1(self.AX) + self.block_sep1(self.U)/self.rho)
+        Y1S = sporco.prox.prox_l1(idftnAXmU, self.lmbda*self.R/self.rho)
+
+        self.Ys = self.block_cat(Y0S,Y1S)
+        self.Y = self.fft(self.Ys)
+
+
+    def obfn_dfd(self):
+        r"""Compute data fidelity term :math:`(1/2) \| \sum_m \mathbf{d}_m *
+        \mathbf{x}_m - \mathbf{s} \|_2^2`.
+        """
+
+        Ef = self.W*(self.ifft(sporco.linalg.inner(self.DR, self.obfn_fvarf(), axis=self.cri.axisM)) - \
+            self.S)
+        return np.sum(np.abs(Ef))
+
+    def obfn_reg(self):
+        """Compute regularisation term(s) and contribution to objective
+        function.
+        """
+        l1_penalty = self.lmbda*np.sum(np.abs(self.ifft(self.obfn_fvarf())))
+        return (l1_penalty,l1_penalty)
 

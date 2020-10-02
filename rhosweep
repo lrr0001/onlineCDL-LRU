@@ -1,0 +1,5 @@
+
+for ii in {0..100]
+do
+    python onlineCDL_fscript.py -ii $ii -N 100 --mu 0.2  -o results$ii.pkl
+end

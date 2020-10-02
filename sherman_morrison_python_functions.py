@@ -3,6 +3,8 @@ import numpy
 import numpy.linalg
 import scipy.linalg
 import sklearn_modified_complex_svd
+import math
+
 
 
 class factoredMatrix:
@@ -195,10 +197,12 @@ class factoredMatrix_chol(factoredMatrix_aIpBhB):
 
         if m <= n: # (flipped) Woodbury formulation may be more efficient.
             idMat = numpy.identity(m,dtype=self.dtype)
+            idMat = numpy.reshape(idMat,(1,)*len(D.shape[:-2]) + (m,m,))
             self.L = numpy.linalg.cholesky(rho*idMat + numpy.matmul(D,conj_tp(D)))
             self.flipped=True
         else:
             idMat = numpy.identity(n,dtype= self.dtype)
+            idMat = numpy.reshape(idMat,(1,)*len(D.shape[:-2]) + (n,n,))
             self.L = numpy.linalg.cholesky(rho*idMat + numpy.matmul(conj_tp(D),D))
             self.flipped=False
 
@@ -250,6 +254,164 @@ class factoredMatrix_chol(factoredMatrix_aIpBhB):
             #    y = scipy.linalg.solve_triangular(self.L[inds],b[inds],lower=True,check_finite=False)
             #    z[inds] = scipy.linalg.solve_triangular(self.L[inds],y,lower=True,trans=2,overwrite_b=True,check_finite=False)
             return z
+
+class factoredMatrix_cloneSlices:
+    def __init__(self, D=None,dtype=None,rho = 1.,dimN=None,clonedSlices=slice(0,1),clonedRhos = 2.):
+        assert D is not None
+        m = D.shape[-2]
+        n = D.shape[-1]
+        if dtype is None:
+            dtype = D.dtype
+        if dimN is None:
+            dimN = len(numpy.squeeze(D[:-2]))
+        if not isinstance(clonedSlices,list):
+            clonedSlices = [clonedSlices,]*dimN
+        if not isinstance(clonedRhos,list):
+            clonedRhos = [clonedRhos,]*dimN
+
+        self.dtype = dtype
+        self.rho = rho
+        self.dimN = dimN
+        self.baseShape = D.shape[:-2]
+
+        self.coreSlices = []
+        self.numOfSlices = []
+        for ii in range(dimN):
+            # The problem is an incompatibility between the slice and range functions. To fix, need to add N to stop.
+            self.coreSlices.append(iter2slices(range(*clonedSlices[ii].indices(D.shape[ii])),D.shape[ii]))
+            self.numOfSlices.append(len(self.coreSlices[ii]))
+
+        self.coreQ = []
+        for inds in loop_magic(self.numOfSlices):
+            #import pdb; pdb.set_trace()
+            self.coreQ.append(factoredMatrix_chol(D[accessLoL(self.coreSlices,inds)],self.dtype,self.rho))
+
+
+        self.edgeSlice = []
+        self.edgeQ = []
+        self.altEdgeQ = []
+        altRho = []
+
+        for ii in range(dimN):
+            self.edgeSlice.append([slice(None),]*ii + [clonedSlices[ii],] + [slice(None),]*(dimN - ii - 1))
+            altRho.append(clonedRhos[ii]*numpy.ones(D.shape[0:ii] + (1,) + D.shape[ii + 1:self.dimN] + (1,)*(len(D.shape) - dimN)))
+        
+        for ii in range(dimN):
+            for jj in range(dimN):
+                if ii != jj:
+                    altRho[ii][tuple(self.edgeSlice[jj])] += clonedRhos[jj]
+
+        #import pdb; pdb.set_trace()
+        for ii in range(dimN):
+            self.edgeQ.append(factoredMatrix_chol(D[tuple(self.edgeSlice[ii])],self.dtype,self.rho))
+            self.altEdgeQ.append(factoredMatrix_chol(D[tuple(self.edgeSlice[ii])],self.dtype,altRho[ii]))
+
+
+#    def __init__(self, D=None,dtype=None,rho = 1.,dimN=None,clonedSlices = slice(-1,0),cloneRhos = 2.):
+#        if D is None:
+#            raise NotImplementedError('Duplicate extension of Cholesky factorization requires input matrix D.')
+#        m = D.shape[-2]
+#        n = D.shape[-1]
+#        if dtype is None:
+#            dtype = D.dtype
+#        if dimN is None:
+#            dimN = len(D.shape) - 2
+#        if not isinstance(clonedSlices,list):
+#            clonedSlices = [clonedSlices,]*dimN
+#        if not isinstance(cloneRhos,list):
+#            cloneRhos = [cloneRhos,]*dimN
+
+        # still need to work on duplicate rhos
+#        self.dtype = dtype
+#        self.rho = rho
+#        self.dimN = dimN
+#        self.baseShape = D.shape[:-2]
+
+#        self.coreSlice = clonedSlices + [slice(None),]*(len(D.shape) - dimN)
+#        self.coreQ = FactoredMatrix_chol(D[self.coreSlice],self.dtype,self.rho)
+#        self.edgeSlice = []
+#        self.edgeQ = []
+#        self.altEdgeQ = []
+
+#        for ii in range(dimN):
+#            self.edgeSlice.append([splice(None),]*ii + [clonedSlices[ii],] + [splice(None),]*(dimN - ii - 1))
+#            self.edgeQ.append(FactoredMatrix_chol(self.D[self.edgeSlice[ii]],self.dtype,self.rho)
+#            altRho = self.cloneRhos[ii]*numpy.ones((1,)*ii + (D.shape[ii],) + (1,)*(dimN - ii - 1))
+#            altRho[self.edgeSlice[ii]] = numpy.sum(duplicRhos)
+#            self.altEdgeQ.append(FactoredMatrix_chol(D[self.edgeSlice[ii],self.dtype,altRho))
+
+    def inv_check_ls(self,D):
+        err = -math.inf
+        ii = 0
+        for inds in loop_magic(self.numOfSlices):
+            err = max(err,self.coreQ[ii].inv_check_ls(D[accessLoL(self.coreSlices,inds)]))
+            ii += 1
+        for ii in range(self.dimN):
+            err = max(err,self.edgeQ[ii].inv_check_ls(D[tuple(self.edgeSlice[ii])]))
+            err = max(err,self.altEdgeQ[ii].inv_check_ls(D[tuple(self.edgeSlice[ii])]))
+        return err
+
+    def _inv_mat_(self,b,D,isalt):
+        # alocate, select, solve
+        
+        xBaseShape = max(b.shape[:-2],self.baseShape)
+        x = numpy.empty(xBaseShape + b.shape[-2:],self.dtype)
+        bCoreSlices = self.coreSlices.copy()
+        for ii in range(self.dimN):
+            bEdgeSlice = self.edgeSlice[ii].copy()
+            if b.shape[ii] == 1:
+                bEdgeSlice[ii] = slice(None)
+                bCoreSlices[ii] = [slice(None),]*self.numOfSlices[ii]
+            if D is None:
+                if isalt:
+                    x[tuple(self.edgeSlice[ii])] = self.altEdgeQ[ii].inv_mat(b=b[tuple(bEdgeSlice)],D=D)
+                else:
+                    x[tuple(self.edgeSlice[ii])] = self.edgeQ[ii].inv_mat(b=b[tuple(bEdgeSlice)],D=D)
+            else:
+                if isalt:
+                    x[tuple(self.edgeSlice[ii])] = self.altEdgeQ[ii].inv_mat(b=b[tuple(bEdgeSlice)],D=D[tuple(self.edgeSlice[ii])])
+                else:
+                    x[tuple(self.edgeSlice[ii])] = self.edgeQ[ii].inv_mat(b=b[tuple(bEdgeSlice)],D=D[tuple(self.edgeSlice[ii])])
+        ii = 0
+        for inds in loop_magic(self.numOfSlices):
+            if D is None:
+                x[accessLoL(self.coreSlices,inds)] = self.coreQ[ii].inv_mat(b=b[accessLoL(bCoreSlices,inds)],D=D)
+            else:
+                x[accessLoL(self.coreSlices,inds)] = self.coreQ[ii].inv_mat(b=b[accessLoL(bCoreSlices,inds)],D=D[accessLoL(self.coreSlices,inds)])
+            ii += 1
+        return x
+    def inv_mat(self,b,D):
+        return _inv_mat_(b,D,False)
+
+    def inv_vec(self,b,D):
+        return minusDim(self._inv_mat_(addDim(b),D,False))
+
+    def inv_mat_duplc(self,b,D):
+        return _inv_mat_(b,D,True)
+    def inv_vec_duplc(self,b,D):
+        return minusDim(self._inv_mat_(addDim(b),D,True))
+
+    def update(self,u,v,D):
+        # This code cannot handle broadcasting for singleton dimensions
+        uCoreSlices = self.coreSlices.copy()
+        vCoreSlices = self.coreSlices.copy()
+        
+        for ii in range(self.dimN):
+            uEdgeSlice = self.edgeSlice[ii].copy()
+            vEdgeSlice = self.edgeSlice[ii].copy()
+            if u.shape[ii] == 1:
+                uCoreSlices[ii] = [slice(None),]*self.numOfSlices[ii]
+                uEdgeSlice[ii] = slice(None)
+            if v.shape[ii] == 1:
+                vCoreSlices[ii] = [slice(None),]*self.numOfSlices[ii]
+                vEdgeSlice[ii] = slice(None)
+            self.edgeQ[ii].update(u[tuple(uEdgeSlice)],v[tuple(vEdgeSlice)],D[tuple(self.edgeSlice[ii])])
+            self.altEdgeQ[ii].update(u[tuple(uEdgeSlice)],v[tuple(vEdgeSlice)],D[tuple(self.edgeSlice[ii])])
+        ii = 0
+        for inds in loop_magic(self.numOfSlices):
+            self.coreQ[ii].update(u[accessLoL(uCoreSlices,inds)],v[accessLoL(vCoreSlices,inds)],D[accessLoL(self.coreSlices,inds)])
+            ii += 1
+
 
 def solve_triangular(A,b,lower=True,trans=False):
     """
@@ -399,6 +561,102 @@ def lowRankApprox(a, projIter=5, axisu=2,axisv=3,dimN=2):
 
     
     return (u,v,mid2external_LRA(approx,axisu,axisv,dimN))
+def lowRankApprox_stackfilters(a, projIter=5,n_components=1,axisu=2,axisv=3,dimN=2):
+    # This function forces the low-rank approximation to have conjugate symmetry (real after frequency transformation).
+    numelN = a.shape[0:dimN]
+    numelu = a.shape[axisu]
+    numelv = a.shape[axisv]
+    #u = []
+    #v = []
+
+    resid = external2mid_LRA(a,axisu,axisv,dimN)
+    midshape = resid.shape
+
+    x = mid2internaltp_LRA(resid, numelv, numelN)
+    #import pdb; pdb.set_trace()
+    vh2,s2,u2 = sklearn_modified_complex_svd.randomized_svd(x,n_components=n_components,n_iter=projIter)
+    #import pdb; pdb.set_trace()
+    u2 = s2*u2
+    # These projections are necessary, though I don't understand why. If the input has conjugate symmetry across the N-axes, shouldn't the output as well?
+    #tempu = conj_sym_proj(internaltp2mid_u_LRA(u2, dimN, midshape),range(dimN))
+    #tempv = conj_sym_proj(internaltp2mid_v_LRA(vh2, dimN, midshape),range(dimN))
+    u=numpy.split(mid2external_LRA(tempu,axisu,axisv,dimN),n_components,axis=axisu)
+    v=numpy.split(mid2external_LRA(tempv,axisu,axisv,dimN),n_components,axis=axisv)
+    approx = tempu*tempv
+
+    #print(midshape)
+    #x = mid2internal_LRA(resid, numelu, numelN)
+    #u1,s1,vh1 = sklearn_modified_complex_svd.randomized_svd(x,n_components=1,n_iter=projIter)
+    #vh1 = s1*vh1
+    #tempu = #conj_sym_proj(
+    #tempu = internal2mid_u_LRA(u1, dimN, midshape)#,range(dimN))
+    #print(vh1.shape)
+    #tempv = #conj_sym_proj(
+    #tempv = internal2mid_v_LRA(vh1, dimN, midshape)
+    #,range(dimN))
+
+
+    #u.append(mid2external_LRA(tempu,axisu,axisv,dimN))
+    #v.append(mid2external_LRA(tempv,axisu,axisv,dimN))
+    #print('First rank-one component, fractional error:')
+    #print(numpy.sqrt(numpy.sum(numpy.conj(resid - approx)*(resid - approx)))/numpy.sqrt(numpy.sum(numpy.conj(resid)*resid)))
+
+
+    #print('Second rank-one component, subsequent fractional error:')
+    #print(numpy.sqrt(numpy.sum(numpy.conj(resid -tempu*tempv)*(resid -tempu*tempv)))/numpy.sqrt(numpy.sum(numpy.conj(resid)*resid)))
+    #approx = approx + tempu*tempv
+
+    
+    return (u,v,mid2external_LRA(approx,axisu,axisv,dimN))
+
+def lowRankApprox_stackchannels(a, projIter=5,n_components=1,axisu=2,axisv=3,dimN=2):
+    # This function forces the low-rank approximation to have conjugate symmetry (real after frequency transformation).
+    numelN = a.shape[0:dimN]
+    numelu = a.shape[axisu]
+    numelv = a.shape[axisv]
+    #u = []
+    #v = []
+
+    resid = external2mid_LRA(a,axisu,axisv,dimN)
+    midshape = resid.shape
+
+    #x = mid2internaltp_LRA(resid, numelv, numelN)
+    #import pdb; pdb.set_trace()
+    #vh2,s2,u2 = sklearn_modified_complex_svd.randomized_svd(x,n_components=n_components,n_iter=projIter)
+    #import pdb; pdb.set_trace()
+    #u2 = s2*u2
+    # These projections are necessary, though I don't understand why. If the input has conjugate symmetry across the N-axes, shouldn't the output as well?
+    #tempu = conj_sym_proj(internaltp2mid_u_LRA(u2, dimN, midshape),range(dimN))
+    #tempv = conj_sym_proj(internaltp2mid_v_LRA(vh2, dimN, midshape),range(dimN))
+    #u=numpy.split(mid2external_LRA(tempu,axisu,axisv,dimN),n_components,axis=axisu)
+    #v=numpy.split(mid2external_LRA(tempv,axisu,axisv,dimN),n_components,axis=axisv)
+    #approx = tempu*tempv
+
+    #print(midshape)
+    x = mid2internal_LRA(resid, numelu, numelN)
+    u1,s1,vh1 = sklearn_modified_complex_svd.randomized_svd(x,n_components=1,n_iter=projIter)
+    vh1 = s1*vh1
+    #tempu = #conj_sym_proj(
+    tempu = internal2mid_u_LRA(u1, dimN, midshape)#,range(dimN))
+    #print(vh1.shape)
+    #tempv = #conj_sym_proj(
+    tempv = internal2mid_v_LRA(vh1, dimN, midshape)
+    #,range(dimN))
+
+
+    u = numpy.split(mid2external_LRA(tempu,axisu,axisv,dimN),n_components,axisu)
+    v = numpy.split(mid2external_LRA(tempv,axisu,axisv,dimN),n_components,axisv)
+    #print('First rank-one component, fractional error:')
+    #print(numpy.sqrt(numpy.sum(numpy.conj(resid - approx)*(resid - approx)))/numpy.sqrt(numpy.sum(numpy.conj(resid)*resid)))
+
+
+    #print('Second rank-one component, subsequent fractional error:')
+    #print(numpy.sqrt(numpy.sum(numpy.conj(resid -tempu*tempv)*(resid -tempu*tempv)))/numpy.sqrt(numpy.sum(numpy.conj(resid)*resid)))
+    approx = tempu*tempv
+
+    
+    return (u,v,mid2external_LRA(approx,axisu,axisv,dimN))
+
 
 def external2mid_LRA(a, axisu=2, axisv=3, dimN=2):
 
@@ -467,7 +725,7 @@ class loop_magic:
     def __init__(self,b):
         self.b = b
         self.L = len(b)
-        self.ind = [0]*self.L
+        self.ind = [0,]*self.L
         self.first = True
     def __iter__(self):
         return self
@@ -607,3 +865,29 @@ def minusDim(x):
     if x.shape[-1] > 1:
         raise ValueError('Last diminsion is not singleton. Cannot remove.')
     return x.reshape(x.shape[0:-1])
+
+def highFreqSlice(N):
+    if N % 2 == 0:
+        return slice(int(N/2),int(N/2) + 1,1)
+    else:
+        return slice(int((N - 1)/2),int((N + 3)/2),1)
+
+
+def iter2slices(k,N):
+    pairs = []
+    a = 0
+    if not k:
+        pairs.append(slice(None))
+        return pairs
+    for ki in k:
+        if ki < 0:
+            ki = ki + N
+        if ki != a:
+            pairs.append(slice(a,ki))
+            a = ki + 1
+    if k[-1] + 1 < N:
+        pairs.append(slice(k[-1] + 1,N))
+    return pairs
+
+def accessLoL(listOfLists,tupleOfInds):
+    return tuple([listOfLists[ii][tupleOfInds[ii]] for ii in range(len(tupleOfInds))])
