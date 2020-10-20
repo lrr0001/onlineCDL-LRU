@@ -188,12 +188,17 @@ class factoredMatrix_chol(factoredMatrix_aIpBhB):
         if D is None:
             raise NotImplementedError('Cholesky factorization currently requires input dictionary.')
         
+        self.dtype=dtype
+        self.rho = rho
+        if isinstance(D,list):
+            self.list_based_init(D,dtype,rho)
+            return None
+
         m = D.shape[-2]
         n = D.shape[-1]
         if dtype is None:
             dtype= D.dtype
-        self.dtype=dtype
-        self.rho = rho
+
 
         if m <= n: # (flipped) Woodbury formulation may be more efficient.
             idMat = numpy.identity(m,dtype=self.dtype)
@@ -205,6 +210,35 @@ class factoredMatrix_chol(factoredMatrix_aIpBhB):
             idMat = numpy.reshape(idMat,(1,)*len(D.shape[:-2]) + (n,n,))
             self.L = numpy.linalg.cholesky(rho*idMat + numpy.matmul(conj_tp(D),D))
             self.flipped=False
+
+    def list_based_init(self,D,dtype,rho):
+        """Here, D is a list of rank one updates to scaled identity.
+
+        The shape is used to communicate whether or not the factorization is flipped:
+
+        D[0].shape = (N_1,N_2,...,1,N) factors rho*I + DD^H, flipped = False
+        D[0].shape = (N_1,N_2,...,M,1) factors rho*I + D^HD, flipped = True
+          """
+        assert(len(D) > 0)
+        if dtype is None:
+            self.dtype = D[0].dtype
+        if D[0].shape[-1] == 1:
+            self.flipped = True
+            m = D[0].shape[-2]
+            idMat = numpy.identity(m,self.dtype)
+            self.L = numpy.sqrt(rho)*numpy.ones(D[0].shape[:-2] + (m,m,))*idMat.reshape(len(D[0].shape[:-2])*(1,) + (m,m,))
+        else:
+            self.flipped = False
+            n = D[0].shape[-1]
+            idMat = numpy.identity(n,self.dtype)
+            self.L = numpy.sqrt(rho)*numpy.ones(D[0].shape[:-2] + (n,n,))*idMat.reshape(len(D[0].shape[:-2])*(1,) + (n,n,))
+
+        for ii in range(len(D)):
+            if self.flipped:
+                self.sym_update(x = minusDim(D[ii]),sign=1)
+            else:
+                self.sym_update(x = minusDim(conj_tp(D[ii])),sign=1)
+        
 
     def sym_update(self,x,sign=1):
         self.L = cholesky_rank1_update(self.L,x,sign)
@@ -576,38 +610,23 @@ def lowRankApprox_stackfilters(a, projIter=5,n_components=1,axisu=2,axisv=3,dimN
     #import pdb; pdb.set_trace()
     vh2,s2,u2 = sklearn_modified_complex_svd.randomized_svd(x,n_components=n_components,n_iter=projIter)
     #import pdb; pdb.set_trace()
-    u2 = s2*u2
+    u2 = addDim(s2)*u2
+    #import pdb; pdb.set_trace()
     # These projections are necessary, though I don't understand why. If the input has conjugate symmetry across the N-axes, shouldn't the output as well?
     #tempu = conj_sym_proj(internaltp2mid_u_LRA(u2, dimN, midshape),range(dimN))
     #tempv = conj_sym_proj(internaltp2mid_v_LRA(vh2, dimN, midshape),range(dimN))
-    u=numpy.split(mid2external_LRA(tempu,axisu,axisv,dimN),n_components,axis=axisu)
-    v=numpy.split(mid2external_LRA(tempv,axisu,axisv,dimN),n_components,axis=axisv)
-    approx = tempu*tempv
+    #print(u2.shape)
+    tempu = internaltp2mid_u_LRA(u2, dimN, midshape,n_components)
+    #print(tempu.shape)
+    tempv = internaltp2mid_v_LRA(vh2, dimN, midshape,n_components)
+    u=numpy.split(mid2external_LRA(tempu,axisu,axisv,dimN),n_components,axis=axisv)
+    #print(u[0].shape)
+    v=numpy.split(mid2external_LRA(tempv,axisu,axisv,dimN),n_components,axis=axisu)
+    #print(vh2.shape)
+    #print(tempv.shape)
+    #print(v[0].shape)
 
-    #print(midshape)
-    #x = mid2internal_LRA(resid, numelu, numelN)
-    #u1,s1,vh1 = sklearn_modified_complex_svd.randomized_svd(x,n_components=1,n_iter=projIter)
-    #vh1 = s1*vh1
-    #tempu = #conj_sym_proj(
-    #tempu = internal2mid_u_LRA(u1, dimN, midshape)#,range(dimN))
-    #print(vh1.shape)
-    #tempv = #conj_sym_proj(
-    #tempv = internal2mid_v_LRA(vh1, dimN, midshape)
-    #,range(dimN))
-
-
-    #u.append(mid2external_LRA(tempu,axisu,axisv,dimN))
-    #v.append(mid2external_LRA(tempv,axisu,axisv,dimN))
-    #print('First rank-one component, fractional error:')
-    #print(numpy.sqrt(numpy.sum(numpy.conj(resid - approx)*(resid - approx)))/numpy.sqrt(numpy.sum(numpy.conj(resid)*resid)))
-
-
-    #print('Second rank-one component, subsequent fractional error:')
-    #print(numpy.sqrt(numpy.sum(numpy.conj(resid -tempu*tempv)*(resid -tempu*tempv)))/numpy.sqrt(numpy.sum(numpy.conj(resid)*resid)))
-    #approx = approx + tempu*tempv
-
-    
-    return (u,v,mid2external_LRA(approx,axisu,axisv,dimN))
+    return (u,v,sum([u[ii]*v[ii] for ii in range(n_components)]))
 
 def lowRankApprox_stackchannels(a, projIter=5,n_components=1,axisu=2,axisv=3,dimN=2):
     # This function forces the low-rank approximation to have conjugate symmetry (real after frequency transformation).
@@ -637,15 +656,14 @@ def lowRankApprox_stackchannels(a, projIter=5,n_components=1,axisu=2,axisv=3,dim
     u1,s1,vh1 = sklearn_modified_complex_svd.randomized_svd(x,n_components=1,n_iter=projIter)
     vh1 = s1*vh1
     #tempu = #conj_sym_proj(
-    tempu = internal2mid_u_LRA(u1, dimN, midshape)#,range(dimN))
+    tempu = internal2mid_u_LRA(u1, dimN, midshape,n_components)#,range(dimN))
     #print(vh1.shape)
     #tempv = #conj_sym_proj(
-    tempv = internal2mid_v_LRA(vh1, dimN, midshape)
+    tempv = internal2mid_v_LRA(vh1, dimN, midshape,n_components)
     #,range(dimN))
 
-
-    u = numpy.split(mid2external_LRA(tempu,axisu,axisv,dimN),n_components,axisu)
-    v = numpy.split(mid2external_LRA(tempv,axisu,axisv,dimN),n_components,axisv)
+    u = numpy.split(mid2external_LRA(tempu,axisu,axisv,dimN),n_components,axisv)
+    v = numpy.split(mid2external_LRA(tempv,axisu,axisv,dimN),n_components,axisu)
     #print('First rank-one component, fractional error:')
     #print(numpy.sqrt(numpy.sum(numpy.conj(resid - approx)*(resid - approx)))/numpy.sqrt(numpy.sum(numpy.conj(resid)*resid)))
 
@@ -686,11 +704,11 @@ def internal2mid_u_LRA(u,dimN,midshape):
 def internal2mid_v_LRA(v,dimN,midshape):
     return v.reshape((1,)*dimN + (1,) + midshape[dimN + 1:])
 
-def internaltp2mid_u_LRA(u, dimN, midshape):
-    return u.reshape((1,)*dimN + (midshape[dimN],) + (1,) + midshape[dimN + 2:])
+def internaltp2mid_u_LRA(u, dimN, midshape,n_components=1):
+    return numpy.swapaxes(u.reshape((1,)*dimN + (n_components,) + (midshape[dimN],) + midshape[dimN + 2:]),dimN,dimN + 1)
 
-def internaltp2mid_v_LRA(v, dimN, midshape):
-    return v.reshape(midshape[0:dimN] + (1,) + (midshape[dimN + 1],) + (1,)*len(midshape[dimN + 2:]))
+def internaltp2mid_v_LRA(v, dimN, midshape,n_components=1):
+    return numpy.swapaxes(v.reshape(midshape[0:dimN] + (midshape[dimN + 1],) + (n_components,) + (1,)*len(midshape[dimN + 2:])),dimN,dimN + 1)
 
 
 

@@ -129,6 +129,7 @@ Set regularization parameter and options for dictionary learning solver.
 """
 
 lmbda = 1e-1
+n_components=3
 opt = onlinecdl.OnlineConvBPDNDictLearn.Options({
                 'Verbose': False, 'ZeroMean': False, 'eta_a': 100.0,
                 'eta_b': 200.0, 'DataType': np.complex128,
@@ -151,7 +152,7 @@ W[:] = True
 """
 Create solver object and solve.
 """
-d = onlineCDL_lowrankupdates.OnlineConvBPDNDictLearnLRU(Q=Q, Df0=Df,W=W,W1=W1,dsz=filterSz + (noc,) + (nof,),lmbda=lmbda,projIter=5, opt=opt)
+d = onlineCDL_lowrankupdates.OnlineConvBPDNDictLearnLRU(Q=Q, Df0=Df,W=W,W1=W1,dsz=filterSz + (noc,) + (nof,),lmbda=lmbda,projIter=5, n_components=n_components,opt=opt)
 
 print('Is D real?')
 print(np.amax(np.abs(Df - (Df + sm.conj_sym_proj(Df,range(2)))/2)))
@@ -236,7 +237,8 @@ for imgnum in range(len(S)):
             Shcurr = Sh[imgnum][np.ix_(cinds,rinds)]
             bold = cbpdn_factoredInv.CBPDN_Factored(Q=Qold,DR=Df,S=Shcurr,R=R,W=W,lmbda=lmbda,dimN=2,opt=opt['CBPDN'])
             xold = bold.solve()
-            bnew = cbpdn_factoredInv.CBPDN_L1DF(Q=d.Q,DR=Dfnew,S=Shcurr,R=d.R,W=W,lmbda=lmbda,mu=mu,dimN=2,opt=opt['CBPDN'])
+            bnew = cbpdn_factoredInv.CBPDN_L1DF(Q=d.Q,DR=Dfnew.squeeze(),S=Shcurr,R=d.R,W=W,lmbda=lmbda,mu=mu,dimN=2,opt=opt['CBPDN'])
+            #bnew = cbpdn_factoredInv.CBPDN_Factored(Q=d.Q,DR=d.Df.squeeze(),S=Shcurr,R=R,W=W,lmbda=lmbda,dimN=2,opt=opt['CBPDN'])
             xnew = bnew.solve()
             shr = bold.reconstruct().squeeze()
             sl = Sl[imgnum][np.ix_(cinds,rinds)]

@@ -110,7 +110,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         self.Dfshape = Df0.shape
         cri = cr.CSC_ConvRepIndexing(Df0,Df0[0:dimN + 1])
         self.Df = Df0.reshape(cri.shpD)
-        self.Gf = self.Df
+        self.Gf = self.Df.copy()
         temp = sporco.linalg.ifftn(self.Df,[self.Dfshape[ii] for ii in range(0,dimN)],tuple(range(0,dimN)))
         self.Gprv = temp[0:self.dsz[0],0:self.dsz[1]]
         self.G = self.Gprv.copy()
@@ -202,10 +202,10 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             #import pdb; pdb.set_trace()
             self.Zf = xstep.getcoef()
             self.Zf = self.Zf.reshape(self.cri.shpX)
-            #complexZf = self.Zf - sm.conj_sym_proj(self.Zf,range(self.dimN))
-            #print('Are the coefficients real?')
-            #print(numpy.amax(numpy.abs(complexZf)))
-
+            complexZf = self.Zf - sm.conj_sym_proj(self.Zf,range(self.dimN))
+            print('Are the coefficients real?')
+            print(numpy.amax(numpy.abs(complexZf)))
+            print(numpy.amax(numpy.abs(self.Zf)))
             #print('How large are these coeficients?')
             #print('frequency:')
             #print(numpy.amax(numpy.abs(self.Zf)))
@@ -277,9 +277,19 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         self.G = newG/sm.computeNorms(newG)
         #print('Maximum value G magnitude:')
         #print(numpy.amax(numpy.abs(self.G)))
-        (u,vh,dupdate) = sm.lowRankApprox_stackFilters(a=self.G - self.D, projIter=self.projIter, n_components=self.n_components, axisu=self.cri.axisC, axisv=self.cri.axisM, dimN=self.dimN)
+        (u,vh,dupdate) = sm.lowRankApprox_stackfilters(a=self.G - self.D, projIter=self.projIter, n_components=self.n_components, axisu=self.cri.axisC, axisv=self.cri.axisM, dimN=self.dimN)
+
+        #import pdb; pdb.set_trace()
+
+
+
+        print('Low-rank update fractional error:')
+        print(numpy.sqrt(numpy.sum(numpy.conj(dupdate - self.G + self.D)*(dupdate - self.G + self.D)))/numpy.sqrt(numpy.sum(numpy.conj(self.G - self.D)*(self.G - self.D))))
+
         self.D += dupdate
-        #self.Gf = sl.fftn(self.G, self.cri.Nv,self.cri.axisN)
+
+        
+        self.Gf = sl.fftn(self.G, self.cri.Nv,self.cri.axisN)
         #print('Is G real?')
         #realGf = sm.conj_sym_proj(self.Gf,range(self.dimN))
         #complexGf = self.Gf - realGf
@@ -311,8 +321,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         #complexvh = vH[1] - realvh
         #print(numpy.amax(numpy.abs(complexvh)))
 
-        #print('Low-rank update fractional error:')
-        #print(numpy.sqrt(numpy.sum(numpy.conj(dupdate - self.Gf + self.Df)*(dupdate - self.Gf + self.Df)))/numpy.sqrt(numpy.sum(numpy.conj(self.Gf - self.Df)*(self.Gf - self.Df))))
+
 
         for ii in range(0,self.n_components):
             #Dftemp = Df
@@ -321,9 +330,9 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             #dftemp = numpy.swapaxes(Dftemp,self.cri.axisC,-2)
             uii = sl.fftn(u[ii], self.cri.Nv,self.cri.axisN)
             vhii = sl.fftn(vh[ii],self.cri.Nv,self.cri.axisN)
-            self.Q.update(sm.uMatRep(uii,self.cri.axisC,self.cri.axisM),sm.vMatRep(vHii,self.cri.axisC,self.cri.axisM),sm.DfMatRep(self.Df,self.cri.axisC,self.cri.axisM))
+            self.Q.update(sm.uMatRep(uii,self.cri.axisC,self.cri.axisM),sm.vMatRep(vhii,self.cri.axisC,self.cri.axisM),sm.DfMatRep(self.Df,self.cri.axisC,self.cri.axisM))
             #self.Q.update(numpy.swapaxes(u[ii],self.cri.axisC,-1),numpy.conj(numpy.swapaxes(vH[ii],self.cri.axisM,-1)),self.Dftemp)
-            self.Df = self.Df + uii*vHii
+            self.Df = self.Df + uii*vhii
         
             print('Is D real?')
             realDf = sm.conj_sym_proj(self.Df,range(self.dimN))
@@ -376,7 +385,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
 
         # These next two lines are specific to this class, which is why the parent method is not used.
-        cnstr = numpy.linalg.norm(self.Df - self.Gf) / numpy.sqrt(numpy.prod(self.cri.Nv))
+        cnstr = numpy.linalg.norm(self.D - self.G)
         dltd = numpy.linalg.norm(self.G - self.Gprv)
 
         tpl = (self.j,) + objfn + rsdl + rho + (cnstr, dltd, self.eta) + \
