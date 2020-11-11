@@ -116,9 +116,9 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         self.G = self.Gprv.copy()
         self.D = self.G.copy()
         self.R = sm.computeNorms(self.G)
-        print('Is D0 real?')
-        complexGf = self.Gf - sm.conj_sym_proj(self.Gf,range(self.dimN))
-        print(numpy.amax(numpy.abs(complexGf)))
+        #print('Is D0 real?')
+        #complexGf = self.Gf - sm.conj_sym_proj(self.Gf,range(self.dimN))
+        #print(numpy.amax(numpy.abs(complexGf)))
 
         # Create constraint set projection function
         self.Pcn = sporco.cnvrep.getPcn(self.dsz, (), dimN, dimCd, crp=True,
@@ -202,10 +202,10 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             #import pdb; pdb.set_trace()
             self.Zf = xstep.getcoef()
             self.Zf = self.Zf.reshape(self.cri.shpX)
-            complexZf = self.Zf - sm.conj_sym_proj(self.Zf,range(self.dimN))
-            print('Are the coefficients real?')
-            print(numpy.amax(numpy.abs(complexZf)))
-            print(numpy.amax(numpy.abs(self.Zf)))
+            #complexZf = self.Zf - sm.conj_sym_proj(self.Zf,range(self.dimN))
+            #print('Are the coefficients real?')
+            #print(numpy.amax(numpy.abs(complexZf)))
+            #print(numpy.amax(numpy.abs(self.Zf)))
             #print('How large are these coeficients?')
             #print('frequency:')
             #print(numpy.amax(numpy.abs(self.Zf)))
@@ -236,7 +236,7 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         """Compute dictionary update for training data of preceding
         :meth:`xstep`.
         """
-        print(self.j)
+        #print(self.j)
         # Compute X D - S
         Ryf = sl.inner(self.Zf, self.Gf, axis=self.cri.axisM) - self.Sf
 
@@ -251,13 +251,13 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
         # Compute gradient
 
         gradf = sl.inner(numpy.conj(self.Zf), Ryf, axis=self.cri.axisK)
-        print('Is grad real?')
+        #print('Is grad real?')
         realgradf = sm.conj_sym_proj(gradf,range(self.dimN))
-        complexgrad = gradf - realgradf
-        print(numpy.amax(numpy.abs(complexgrad)))
+        #complexgrad = gradf - realgradf
+        #print(numpy.amax(numpy.abs(complexgrad)))
         gradf = realgradf
-        print('Maximum value gradf:')
-        print(numpy.amax(numpy.abs(gradf)))
+        #print('Maximum value gradf:')
+        #print(numpy.amax(numpy.abs(gradf)))
 
         
         # If multiple channel signal, single channel dictionary
@@ -283,8 +283,8 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
 
 
 
-        print('Low-rank update fractional error:')
-        print(numpy.sqrt(numpy.sum(numpy.conj(dupdate - self.G + self.D)*(dupdate - self.G + self.D)))/numpy.sqrt(numpy.sum(numpy.conj(self.G - self.D)*(self.G - self.D))))
+        #print('Low-rank update fractional error:')
+        #print(numpy.sqrt(numpy.sum(numpy.conj(dupdate - self.G + self.D)*(dupdate - self.G + self.D)))/numpy.sqrt(numpy.sum(numpy.conj(self.G - self.D)*(self.G - self.D))))
 
         self.D += dupdate
 
@@ -334,20 +334,20 @@ class OnlineConvBPDNDictLearnLRU(sporco.dictlrn.onlinecdl.OnlineConvBPDNDictLear
             #self.Q.update(numpy.swapaxes(u[ii],self.cri.axisC,-1),numpy.conj(numpy.swapaxes(vH[ii],self.cri.axisM,-1)),self.Dftemp)
             self.Df = self.Df + uii*vhii
         
-            print('Is D real?')
+            #print('Is D real?')
             realDf = sm.conj_sym_proj(self.Df,range(self.dimN))
-            complexDf = self.Df - realDf
-            print(numpy.amax(numpy.abs(complexDf)))
+            #complexDf = self.Df - realDf
+            #print(numpy.amax(numpy.abs(complexDf)))
             self.Df = realDf
-            print('Inverse check:')
-            print(self.Q.inv_check_ls(sm.DfMatRep(self.Df,self.cri.axisC,self.cri.axisM)))
+            #print('Inverse check:')
+            #print(self.Q.inv_check_ls(sm.DfMatRep(self.Df,self.cri.axisC,self.cri.axisM)))
             
         
         self.R = sm.computeNorms(self.Df.reshape(self.Dfshape)/numpy.sqrt(numpy.prod(self.cri.Nv)))
-        print('minimum element R:')
-        print(numpy.amin(numpy.abs(self.R)))
-        print('maximum element R:')
-        print(numpy.amax(numpy.abs(self.R)))
+        #print('minimum element R:')
+        #print(numpy.amin(numpy.abs(self.R)))
+        #print('maximum element R:')
+        #print(numpy.amax(numpy.abs(self.R)))
         #D = sporco.linalg.ifftn(self.Df, self.cri.Nv,self.cri.axisN)
         #R = sm.computeNorms(D[0:self.dsz[0],0:self.dsz[1]])
         #tempD = self.getdict()

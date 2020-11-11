@@ -19,12 +19,12 @@ parser.add_option("-o","--outputfile",action="store",type="string",dest="outputf
 minrho = 1/100
 maxrho = 100
 rho = minrho*(maxrho/minrho)**(float(options.ii)/(options.N - 1))
-noepochs = 2
+noepochs = 100
 
 #mu = options.mu
 N = options.N
 outputfile = options.outputfile
-
+print(options.ii)
 import pickle
 import numpy as np
 fid = open('initial_dictionary.pckl','rb')
@@ -78,6 +78,7 @@ d.display_start()
 #    img_index = np.random.randint(0, sh.shape[-1])
 #    print(sh[...,[img_index]].shape)
 #    d.solve(sh[..., [img_index]])
+failed = False
 for epoch in range(noepochs):
     fid = open('scene6_frames.pckl','rb')
     while 1:
@@ -85,11 +86,23 @@ for epoch in range(noepochs):
             temp = pickle.load(fid)
         except (EOFError):
             break
-        print(temp.dtype)
-        print(np.amin(temp))
-        print(np.amax(temp))
-        print(temp.shape)
-        d.solve(temp)
+        #print(temp.dtype)
+        #print(np.amin(temp))
+        #print(np.amax(temp))
+        #print(temp.shape)
+        try:
+            d.solve(temp)
+        except (ValueError):
+            failed = True
+            break
     fid.close()
+    if failed:
+        #print('Success!')
+        break
 
-
+# need to write code to save off results
+sfid = open(outputfile,'wb')
+pickle.dump(failed,sfid)
+if not failed:
+    pickle.dump(d,sfid)
+sfid.close()
